@@ -17,11 +17,94 @@ class SinapseApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1565C0)),
         useMaterial3: true,
       ),
-      home: const LoginPage(),
+      // Alterado para iniciar na SplashScreen
+      home: const SplashScreen(), 
     );
   }
 }
 
+// ── Splash Screen ────────────────────────────────────────────────────────────
+class SplashScreen extends StatefulWidget {
+  const SplashScreen({super.key});
+
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Aguarda 3 segundos e navega para a tela de Login
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const LoginPage()),
+        );
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        // Mantendo a mesma paleta de gradiente do Login
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF42A5F5), // azul claro
+              Color(0xFF0D47A1), // azul escuro
+            ],
+          ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: const [
+            // Ícone do App
+            Icon(
+              Icons.psychology_rounded,
+              size: 100,
+              color: Colors.white,
+            ),
+            SizedBox(height: 16),
+            // Nome do App
+            Text(
+              'Sinapse',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 48,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.5,
+              ),
+            ),
+            SizedBox(height: 8),
+            // Slogan
+            Text(
+              'Jogue, aprenda, compartilhe!',
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 16,
+                letterSpacing: 0.5,
+              ),
+            ),
+            SizedBox(height: 48),
+            // Indicador de Carregamento
+            CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Login Page (Seu código original mantido)
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
@@ -110,10 +193,10 @@ class _LoginPageState extends State<LoginPage> {
                       color: Color(0xFF1565C0),
                     ),
                     const SizedBox(height: 4),
-                    Text(
+                    const Text(
                       'Sinapse',
                       style: TextStyle(
-                        color: const Color(0xFF1565C0),
+                        color: Color(0xFF1565C0),
                         fontSize: 38,
                         fontWeight: FontWeight.bold,
                         letterSpacing: 1.2,
