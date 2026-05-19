@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'profilePage.dart';
-import 'main.dart'; // Para redirecionamento no logout
+import 'main.dart';
 import 'backgroundMusic.dart';
 import 'memoryGamePage.dart';
 

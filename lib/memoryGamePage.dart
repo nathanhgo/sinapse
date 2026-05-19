@@ -446,7 +446,7 @@ class _MemoryGamePageState extends State<MemoryGamePage> {
   }
 }
 
-// ── Carta de Memória ────────────────────────────────────────────────────────
+// Carta de Memória
 class MemoryCard {
   final String content;
   bool isFaceUp;
@@ -459,7 +459,7 @@ class MemoryCard {
   });
 }
 
-// ── Pintor da Estrela Discreta no Background ──────────────────────────────
+// Pintor da Estrela Discreta no Background
 class StarPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
@@ -495,7 +495,7 @@ class StarPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-// ── Widget de Carta de Memória com Animação de Giro 3D ─────────────────────
+// Widget de Carta de Memória com Animação de Giro 3D
 class MemoryCardWidget extends StatefulWidget {
   final String content;
   final bool isFaceUp;
@@ -561,7 +561,7 @@ class _MemoryCardWidgetState extends State<MemoryCardWidget> with SingleTickerPr
 
         return Transform(
           transform: Matrix4.identity()
-            ..setEntry(3, 2, 0.002) // Efeito de perspectiva 3D!
+            ..setEntry(3, 2, 0.002) // Efeito de perspectiva 3D
             ..rotateY(angle),
           alignment: Alignment.center,
           child: InkWell(

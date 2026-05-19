@@ -36,7 +36,7 @@ class BackgroundMusic {
     if (!_isMuted) {
       await _player.setVolume(_volume);
     }
-    // Se o volume for maior que zero e o player não estiver tocando, tenta reproduzir!
+    // Se o volume for maior que zero e o player não estiver tocando, tenta reproduzir
     if (_volume > 0.0 && _player.state != PlayerState.playing && !_isMuted) {
       await play();
     }

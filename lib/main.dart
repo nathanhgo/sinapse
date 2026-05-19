@@ -47,7 +47,6 @@ class SinapseApp extends StatelessWidget {
   }
 }
 
-// ── Splash Screen ────────────────────────────────────────────────────────────
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -59,8 +58,6 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    // Toca a música de fundo de forma segura após o primeiro frame ser desenhado na tela,
-    // garantindo que os canais de áudio e a janela nativa do OS estejam ativos.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       BackgroundMusic().play();
     });
@@ -95,8 +92,8 @@ class _SplashScreenState extends State<SplashScreen> {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Color(0xFF42A5F5), // azul claro
-              Color(0xFF0D47A1), // azul escuro
+              Color(0xFF42A5F5),
+              Color(0xFF0D47A1),
             ],
           ),
         ),
@@ -134,7 +131,7 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 }
 
-// ── Login Page (Atualizada com Cadastro e Supabase Auth)
+// Login Page (Atualizada com Cadastro e Supabase Auth)
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
@@ -235,7 +232,7 @@ class _LoginPageState extends State<LoginPage> {
 
     try {
       // Cria a conta de autenticação passando nome e username como metadata
-      // O trigger do banco fará o resto inserindo automaticamente em public.profiles!
+      // O trigger do banco fará o resto inserindo automaticamente em public.profiles
       await Supabase.instance.client.auth.signUp(
         email: email,
         password: senha,
@@ -244,7 +241,7 @@ class _LoginPageState extends State<LoginPage> {
           'username': usuario.replaceAll(
             '@',
             '',
-          ), // Garante que não duplica o '@'
+          ),
         },
       );
 
@@ -305,8 +302,8 @@ class _LoginPageState extends State<LoginPage> {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Color(0xFF42A5F5), // azul claro
-              Color(0xFF0D47A1), // azul escuro
+              Color(0xFF42A5F5),
+              Color(0xFF0D47A1),
             ],
           ),
         ),
