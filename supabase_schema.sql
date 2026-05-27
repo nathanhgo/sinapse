@@ -48,6 +48,7 @@ end;
 $$ language plpgsql security definer;
 
 -- Associar a função trigger ao evento de criação de novos usuários em auth.users
+drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
@@ -72,3 +73,51 @@ begin
   delete from auth.users where id = current_user_id;
 end;
 $$ language plpgsql security definer;
+
+-- ==========================================
+-- 6. ATUALIZAÇÕES DO SISTEMA SOCIAL E JOGOS
+-- Execute estas atualizações adicionais se o seu banco já estiver criado.
+-- ==========================================
+
+-- Adicionar coluna de recorde para o Word Game (se não existir)
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS best_score_word integer;
+
+-- Criar a Tabela de Amizades (Friendships)
+CREATE TABLE IF NOT EXISTS public.friendships (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  sender_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+  receiver_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+  status text NOT NULL CHECK (status IN ('pending', 'accepted')),
+  created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
+  updated_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
+  UNIQUE(sender_id, receiver_id)
+);
+
+-- Habilitar o Row Level Security (RLS)
+ALTER TABLE public.friendships ENABLE ROW LEVEL SECURITY;
+
+-- Criar Políticas de RLS para Amizades
+DROP POLICY IF EXISTS "Usuários podem ver suas próprias amizades" ON public.friendships;
+CREATE POLICY "Usuários podem ver suas próprias amizades"
+  ON public.friendships FOR SELECT
+  USING (auth.uid() = sender_id OR auth.uid() = receiver_id);
+
+DROP POLICY IF EXISTS "Usuários podem enviar solicitações de amizade" ON public.friendships;
+CREATE POLICY "Usuários podem enviar solicitações de amizade"
+  ON public.friendships FOR INSERT
+  WITH CHECK (auth.uid() = sender_id AND status = 'pending');
+
+DROP POLICY IF EXISTS "Usuários podem aceitar solicitações recebidas" ON public.friendships;
+CREATE POLICY "Usuários podem aceitar solicitações recebidas"
+  ON public.friendships FOR UPDATE
+  USING (auth.uid() = receiver_id);
+
+DROP POLICY IF EXISTS "Usuários podem cancelar/remover amizades" ON public.friendships;
+CREATE POLICY "Usuários podem cancelar/remover amizades"
+  ON public.friendships FOR DELETE
+  USING (auth.uid() = sender_id OR auth.uid() = receiver_id);
+
+-- Criar Índices para Otimizar Consultas de Amigos/Rankings
+CREATE INDEX IF NOT EXISTS idx_friendships_sender ON public.friendships(sender_id);
+CREATE INDEX IF NOT EXISTS idx_friendships_receiver ON public.friendships(receiver_id);
+CREATE INDEX IF NOT EXISTS idx_friendships_status ON public.friendships(status);

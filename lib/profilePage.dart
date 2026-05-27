@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'main.dart';
+import 'backgroundMusic.dart';
+import 'theme.dart';
 
 void main() {
   runApp(const SinapseApp());
@@ -25,20 +27,8 @@ class SinapseApp extends StatelessWidget {
 }
 
 class ProfilePage extends StatefulWidget {
-  const ProfilePage({super.key});
-
-  @override
-  State<ProfilePage> createState() => _ProfilePageState();
-}
-
-class _ProfilePageState extends State<ProfilePage> {
-  String _nome = 'Carregando...';
-  String _username = '@carregando';
-  int _streak = 0;
-  bool _isCasual = false;
-  String _avatarKey = 'psychology';
-  bool _isGuest = true;
-  bool _isLoading = true;
+  final bool isTab;
+  const ProfilePage({super.key, this.isTab = false});
 
   static const Map<String, IconData> avatarIcons = {
     'psychology': Icons.psychology,
@@ -56,12 +46,25 @@ class _ProfilePageState extends State<ProfilePage> {
   };
 
   @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
+  String _nome = 'Carregando...';
+  String _username = '@carregando';
+  int _streak = 0;
+  bool _isCasual = false;
+  String _avatarKey = 'psychology';
+  bool _isGuest = true;
+  bool _isLoading = true;
+
+  @override
   void initState() {
     super.initState();
     _loadProfile();
   }
 
-  // Carrega as informações em tempo real no banco do Supabase
+  // Carrega as informações em tempo real no banco do Supabase e valida a validade do streak
   Future<void> _loadProfile() async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) {
@@ -86,10 +89,32 @@ class _ProfilePageState extends State<ProfilePage> {
           .eq('id', user.id)
           .single();
 
+      int streakFromDb = data['streak'] as int? ?? 0;
+      final lastPlayDateStr = data['last_play_date'] as String?;
+
+      final now = DateTime.now();
+      final todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+      final yesterday = now.subtract(const Duration(days: 1));
+      final yesterdayStr = "${yesterday.year}-${yesterday.month.toString().padLeft(2, '0')}-${yesterday.day.toString().padLeft(2, '0')}";
+
+      if (lastPlayDateStr == null || (lastPlayDateStr != todayStr && lastPlayDateStr != yesterdayStr)) {
+        if (streakFromDb > 0) {
+          streakFromDb = 0;
+          try {
+            await Supabase.instance.client
+                .from('profiles')
+                .update({'streak': 0})
+                .eq('id', user.id);
+          } catch (e) {
+            debugPrint('Erro ao resetar streak expirada: $e');
+          }
+        }
+      }
+
       setState(() {
         _nome = data['name'] as String? ?? 'Usuário Sinapse';
         _username = '@${data['username'] as String? ?? 'usuario'}';
-        _streak = data['streak'] as int? ?? 0;
+        _streak = streakFromDb;
         _isCasual = data['is_casual'] as bool? ?? false;
         _avatarKey = data['avatar'] as String? ?? 'psychology';
         _isGuest = false;
@@ -181,10 +206,10 @@ class _ProfilePageState extends State<ProfilePage> {
                 mainAxisSpacing: 12,
                 childAspectRatio: 1.0,
               ),
-              itemCount: avatarIcons.length,
+              itemCount: ProfilePage.avatarIcons.length,
               itemBuilder: (context, index) {
-                final key = avatarIcons.keys.elementAt(index);
-                final icon = avatarIcons[key]!;
+                final key = ProfilePage.avatarIcons.keys.elementAt(index);
+                final icon = ProfilePage.avatarIcons[key]!;
                 final isCurrent = key == _avatarKey;
 
                 return InkWell(
@@ -399,6 +424,16 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  Future<void> _logout() async {
+    await Supabase.instance.client.auth.signOut();
+    if (mounted) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginPage()),
+        (route) => false,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     const Color azulPrincipal = Color(0xFF1565C0);
@@ -411,16 +446,33 @@ class _ProfilePageState extends State<ProfilePage> {
         backgroundColor: Colors.transparent, 
         elevation: 0,
         toolbarHeight: 90,
-        leading: Padding(
-          padding: const EdgeInsets.only(left: 8.0),
-          child: IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.white, size: 40),
-            onPressed: () {
-              Navigator.pop(context);
+        leading: widget.isTab
+            ? null
+            : Padding(
+                padding: const EdgeInsets.only(left: 8.0),
+                child: IconButton(
+                  icon: const Icon(Icons.arrow_back, color: Colors.white, size: 40),
+                  onPressed: () {
+                    Navigator.pop(context);
+                  },
+                ),
+              ),
+        actions: [
+          ValueListenableBuilder<bool>(
+            valueListenable: isDarkModeNotifier,
+            builder: (context, isDark, child) {
+              return IconButton(
+                icon: Icon(
+                  isDark ? Icons.light_mode : Icons.dark_mode,
+                  color: Colors.white,
+                  size: 28,
+                ),
+                onPressed: () {
+                  isDarkModeNotifier.value = !isDark;
+                },
+              );
             },
           ),
-        ),
-        actions: [
           if (!_isCasual)
             Container(
               margin: const EdgeInsets.only(right: 20),
@@ -494,7 +546,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         ],
                       ),
                       child: Icon(
-                        avatarIcons[_avatarKey] ?? Icons.psychology,
+                        ProfilePage.avatarIcons[_avatarKey] ?? Icons.psychology,
                         size: 60,
                         color: azulPrincipal,
                       ),
@@ -553,7 +605,89 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
               ),
 
-              const SizedBox(height: 50),
+              const SizedBox(height: 30),
+
+              // Controle de Música de Fundo
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 40.0, vertical: 10.0),
+                padding: const EdgeInsets.all(16.0),
+                decoration: BoxDecoration(
+                  color: Colors.white.withAlpha((255 * 0.1).round()),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white24),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.music_note, color: Colors.white, size: 20),
+                        SizedBox(width: 8),
+                        Text(
+                          'Música de Fundo',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    StatefulBuilder(
+                      builder: (context, setStateMusic) {
+                        final bgMusic = BackgroundMusic();
+                        return Row(
+                          children: [
+                            IconButton(
+                              icon: Icon(
+                                bgMusic.isMuted
+                                    ? Icons.volume_off
+                                    : (bgMusic.volume == 0.0
+                                        ? Icons.volume_mute
+                                        : (bgMusic.volume < 0.5
+                                            ? Icons.volume_down
+                                            : Icons.volume_up)),
+                                color: Colors.white,
+                              ),
+                              onPressed: () async {
+                                await bgMusic.toggleMute();
+                                setStateMusic(() {});
+                              },
+                            ),
+                            Expanded(
+                              child: Slider(
+                                value: bgMusic.isMuted ? 0.0 : bgMusic.volume,
+                                min: 0.0,
+                                max: 1.0,
+                                activeColor: Colors.white,
+                                inactiveColor: Colors.white24,
+                                onChanged: (value) async {
+                                  if (bgMusic.isMuted) {
+                                    await bgMusic.toggleMute();
+                                  }
+                                  await bgMusic.setVolume(value);
+                                  setStateMusic(() {});
+                                },
+                              ),
+                            ),
+                            Text(
+                              '${((bgMusic.isMuted ? 0.0 : bgMusic.volume) * 100).round()}%',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.white70,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 20),
 
               // Lista de Botões de Ação
               Padding(
@@ -572,6 +706,13 @@ class _ProfilePageState extends State<ProfilePage> {
                       backgroundColor: rosaBotao,
                       textColor: Colors.white,
                       onPressed: _editarPerfil,
+                    ),
+                    const SizedBox(height: 20),
+                    _buildButton(
+                      text: _isGuest ? 'Fazer Login' : 'Sair da Conta',
+                      backgroundColor: _isGuest ? Colors.green : Colors.orangeAccent.shade700,
+                      textColor: Colors.white,
+                      onPressed: _logout,
                     ),
                     const SizedBox(height: 40),
                     _buildButton(

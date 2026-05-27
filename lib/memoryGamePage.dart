@@ -2,22 +2,23 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'theme.dart';
 
 class MemoryGamePage extends StatefulWidget {
-  const MemoryGamePage({super.key});
+  final String difficulty;
+
+  const MemoryGamePage({super.key, this.difficulty = 'difícil'});
 
   @override
   State<MemoryGamePage> createState() => _MemoryGamePageState();
 }
 
 class _MemoryGamePageState extends State<MemoryGamePage> {
-  // Cores do Design
-  static const Color azulPrincipal = Color(0xFF1565C0);
-  static const Color rosaBotao = Color(0xFFD81B60);
-
-  // Emojis para o tabuleiro (8 pares = 16 cartas)
+  // Emojis para o tabuleiro (suporta até 18 pares = 36 cartas no modo 6x6)
   static const List<String> _baseEmojis = [
-    '☀️', '🌙', '💡', '🏆', '🚀', '🧩', '⚡', '❤️'
+    '☀️', '🌙', '💡', '🏆', '🚀', '🧩', '⚡', '❤️',
+    '🎨', '🎬', '🎯', '⚽', '🎒', '🐱', '🐶', '🦄',
+    '🍉', '🍕', '🔑', '✈️', '🎮', '🚗', '🍿', '🌍'
   ];
 
   // Estado do Perfil e Recordes
@@ -39,20 +40,25 @@ class _MemoryGamePageState extends State<MemoryGamePage> {
   int _countdownValue = 3;
   Timer? _countdownTimer;
 
+  // Estado da Memorização Inicial
+  bool _isMemorizing = false;
+  Timer? _memorizeTimer;
+
   @override
   void initState() {
     super.initState();
     _loadProfileAndRecord();
-    _iniciarCountdown();
+    _iniciarMemorizacao();
   }
 
   @override
   void dispose() {
     _countdownTimer?.cancel();
+    _memorizeTimer?.cancel();
     super.dispose();
   }
 
-  // Carrega informações do perfil e o recorde atual do usuário
+  // Carrega informações do perfil e o recorde atual do usuário (se estiver na dificuldade difícil)
   Future<void> _loadProfileAndRecord() async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) {
@@ -84,16 +90,49 @@ class _MemoryGamePageState extends State<MemoryGamePage> {
     }
   }
 
-  // Controla o cronômetro da contagem regressiva
-  void _iniciarCountdown() {
+  // Inicia a memorização: mostra cartas viradas por 2 segundos
+  void _iniciarMemorizacao() {
     _inicializarTabuleiro();
+    
+    // Revela todas as cartas para a memorização
+    for (var card in _cards) {
+      card.isFaceUp = true;
+    }
+
     setState(() {
-      _isCountingDown = true;
-      _countdownValue = 3;
+      _isMemorizing = true;
+      _isCountingDown = false;
       _moves = 0;
       _selectedCardIndex1 = -1;
       _selectedCardIndex2 = -1;
       _isChecking = false;
+    });
+
+    _memorizeTimer?.cancel();
+    _memorizeTimer = Timer(const Duration(seconds: 2), () {
+      if (!mounted) return;
+      
+      setState(() {
+        // Oculta todas as cartas de volta, exceto o Coringa (se modo médio)
+        for (int i = 0; i < _cards.length; i++) {
+          if (widget.difficulty == 'médio' && i == 12) {
+            continue;
+          }
+          _cards[i].isFaceUp = false;
+        }
+        _isMemorizing = false;
+      });
+      
+      // Inicia a contagem regressiva de 3s
+      _iniciarCountdown();
+    });
+  }
+
+  // Controla o cronômetro da contagem regressiva
+  void _iniciarCountdown() {
+    setState(() {
+      _isCountingDown = true;
+      _countdownValue = 3;
     });
 
     _countdownTimer?.cancel();
@@ -114,15 +153,38 @@ class _MemoryGamePageState extends State<MemoryGamePage> {
 
   // Inicializa e embaralha o tabuleiro
   void _inicializarTabuleiro() {
-    final doubleEmojis = [..._baseEmojis, ..._baseEmojis];
+    int numPairs;
+    if (widget.difficulty == 'fácil') {
+      numPairs = 8;
+    } else if (widget.difficulty == 'médio') {
+      numPairs = 12; // 12 pares + 1 coringa = 25 cartas
+    } else {
+      numPairs = 18; // 18 pares = 36 cartas
+    }
+
+    final selectedEmojis = _baseEmojis.sublist(0, numPairs);
+    final doubleEmojis = [...selectedEmojis, ...selectedEmojis];
     doubleEmojis.shuffle();
 
-    _cards = doubleEmojis.map((emoji) => MemoryCard(content: emoji)).toList();
+    if (widget.difficulty == 'médio') {
+      _cards = doubleEmojis.map((emoji) => MemoryCard(content: emoji)).toList();
+      // O Coringa fica no centro geométrico (índice 12 de um grid de 25)
+      _cards.insert(
+        12,
+        MemoryCard(
+          content: '⭐',
+          isFaceUp: true,
+          isMatched: true,
+        ),
+      );
+    } else {
+      _cards = doubleEmojis.map((emoji) => MemoryCard(content: emoji)).toList();
+    }
   }
 
   // Lógica ao selecionar um card
   void _onCardTap(int index) {
-    if (_isCountingDown || _isChecking) return;
+    if (_isCountingDown || _isChecking || _isMemorizing) return;
     
     final selectedCard = _cards[index];
     if (selectedCard.isFaceUp || selectedCard.isMatched) return;
@@ -166,15 +228,17 @@ class _MemoryGamePageState extends State<MemoryGamePage> {
     }
   }
 
-  // Trata a vitória e persistência do recorde
+  // Finaliza o jogo e envia o recorde se estiver na dificuldade difícil
   Future<void> _finalizarJogo() async {
     bool recordeBatido = false;
     final antigoRecorde = _recorde;
 
-    // Menor número de jogadas é melhor!
-    if (antigoRecorde == null || _moves < antigoRecorde) {
-      recordeBatido = true;
-      setState(() => _recorde = _moves);
+    // Apenas registra o recorde na dificuldade difícil!
+    if (widget.difficulty == 'difícil') {
+      if (antigoRecorde == null || _moves < antigoRecorde) {
+        recordeBatido = true;
+        setState(() => _recorde = _moves);
+      }
     }
 
     if (!_isGuest) {
@@ -191,7 +255,6 @@ class _MemoryGamePageState extends State<MemoryGamePage> {
         } else if (_lastPlayDate == yesterdayStr) {
           newStreak = _streak + 1;
         } else if (_lastPlayDate != todayStr) {
-          // Quebrou a ofensiva, reseta para 1
           newStreak = 1;
         }
 
@@ -207,7 +270,7 @@ class _MemoryGamePageState extends State<MemoryGamePage> {
           updates['streak'] = newStreak;
           updates['last_play_date'] = todayStr;
         }
-        if (recordeBatido) {
+        if (widget.difficulty == 'difícil' && recordeBatido) {
           updates['best_score_memory'] = _moves;
         }
 
@@ -231,34 +294,46 @@ class _MemoryGamePageState extends State<MemoryGamePage> {
       context: context,
       barrierDismissible: false,
       builder: (context) {
+        final isDark = isDarkModeNotifier.value;
+        final dialogBg = isDark ? const Color(0xFF1B2A47) : Colors.white;
+        final textColor = isDark ? Colors.white : AppColors.azulPrincipal;
+        final subtextColor = isDark ? Colors.white70 : Colors.black87;
+
         return AlertDialog(
+          backgroundColor: dialogBg,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Row(
+          title: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.emoji_events, color: Colors.amber, size: 28),
-              SizedBox(width: 8),
+              const Icon(Icons.emoji_events, color: Colors.amber, size: 28),
+              const SizedBox(width: 8),
               Text(
                 'Vitória!',
-                style: TextStyle(fontWeight: FontWeight.bold, color: azulPrincipal),
+                style: TextStyle(fontWeight: FontWeight.bold, color: textColor),
               ),
             ],
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
+              Text(
                 'Parabéns, você combinou todos os pares!',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 16),
+                style: TextStyle(fontSize: 16, color: subtextColor),
               ),
               const SizedBox(height: 16),
               Text(
                 'Sua Pontuação: $_moves jogadas',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: rosaBotao),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppColors.rosaBotao),
               ),
               const SizedBox(height: 8),
-              if (recordeBatido)
+              if (widget.difficulty != 'difícil')
+                Text(
+                  'Recordes são salvos apenas no modo Difícil.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: isDark ? Colors.amber.shade200 : Colors.amber.shade800, fontSize: 13, fontWeight: FontWeight.bold),
+                )
+              else if (recordeBatido)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
@@ -299,12 +374,12 @@ class _MemoryGamePageState extends State<MemoryGamePage> {
             ElevatedButton.icon(
               onPressed: () {
                 Navigator.pop(context); // fecha dialog
-                _iniciarCountdown(); // reinicia
+                _iniciarMemorizacao(); // reinicia
               },
               icon: const Icon(Icons.replay, color: Colors.white),
               label: const Text('Jogar Novo', style: TextStyle(color: Colors.white)),
               style: ElevatedButton.styleFrom(
-                backgroundColor: rosaBotao,
+                backgroundColor: AppColors.rosaBotao,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
@@ -316,6 +391,29 @@ class _MemoryGamePageState extends State<MemoryGamePage> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = isDarkModeNotifier.value;
+    final azulPrincipal = AppColors.azulPrincipal;
+    
+    // Determina a quantidade de colunas e espaçamento com base na dificuldade
+    final int crossCount = widget.difficulty == 'fácil'
+        ? 4
+        : widget.difficulty == 'médio'
+            ? 5
+            : 6;
+
+    final double spacing = widget.difficulty == 'fácil'
+        ? 12
+        : widget.difficulty == 'médio'
+            ? 8
+            : 6;
+
+    // Determina o tamanho da fonte dos emojis
+    final double emojiFontSize = widget.difficulty == 'fácil'
+        ? 42
+        : widget.difficulty == 'médio'
+            ? 34
+            : 28;
+
     return Scaffold(
       backgroundColor: azulPrincipal,
       appBar: AppBar(
@@ -325,9 +423,9 @@ class _MemoryGamePageState extends State<MemoryGamePage> {
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          'Jogo da Memória',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20),
+        title: Text(
+          'Jogo da Memória (${widget.difficulty.toUpperCase()})',
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
         ),
         centerTitle: true,
         actions: [
@@ -358,7 +456,7 @@ class _MemoryGamePageState extends State<MemoryGamePage> {
           // Background - Estrela Gigante Discreta
           Positioned.fill(
             child: CustomPaint(
-              painter: StarPainter(),
+              painter: StarPainter(isDark: isDark),
             ),
           ),
 
@@ -371,7 +469,7 @@ class _MemoryGamePageState extends State<MemoryGamePage> {
                   children: [
                     const Spacer(),
                     
-                    // Tabuleiro 4x4 ou Tela de Contagem Regressiva
+                    // Tabuleiro de Memória ou Tela de Contagem Regressiva
                     if (_isCountingDown)
                       Center(
                         child: AnimatedSwitcher(
@@ -396,16 +494,16 @@ class _MemoryGamePageState extends State<MemoryGamePage> {
                         ),
                       )
                     else
-                      // Tabuleiro 4x4 de Memória
+                      // Tabuleiro de Memória Adaptado
                       AspectRatio(
                         aspectRatio: 1.0,
                         child: GridView.builder(
                           physics: const NeverScrollableScrollPhysics(),
-                          itemCount: 16,
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 4,
-                            crossAxisSpacing: 12,
-                            mainAxisSpacing: 12,
+                          itemCount: _cards.length,
+                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: crossCount,
+                            crossAxisSpacing: spacing,
+                            mainAxisSpacing: spacing,
                             childAspectRatio: 1.0,
                           ),
                           itemBuilder: (context, index) {
@@ -414,6 +512,7 @@ class _MemoryGamePageState extends State<MemoryGamePage> {
                               content: card.content,
                               isFaceUp: card.isFaceUp,
                               isMatched: card.isMatched,
+                              fontSize: emojiFontSize,
                               onTap: () => _onCardTap(index),
                             );
                           },
@@ -426,7 +525,7 @@ class _MemoryGamePageState extends State<MemoryGamePage> {
                     Padding(
                       padding: const EdgeInsets.only(bottom: 24.0),
                       child: Text(
-                        'Pontuação: $_moves',
+                        _isMemorizing ? 'Memorize as cartas!' : 'Pontuação: $_moves',
                         textAlign: TextAlign.center,
                         style: const TextStyle(
                           fontSize: 28,
@@ -461,19 +560,24 @@ class MemoryCard {
 
 // Pintor da Estrela Discreta no Background
 class StarPainter extends CustomPainter {
+  final bool isDark;
+
+  StarPainter({required this.isDark});
+
   @override
   void paint(Canvas canvas, Size size) {
+    final double opacity = isDark ? 0.02 : 0.05;
     final paint = Paint()
-      ..color = Colors.white.withAlpha((255 * 0.05).round()) // 5% de opacidade
+      ..color = Colors.white.withAlpha((255 * opacity).round())
       ..style = PaintingStyle.fill;
 
     final path = Path();
     final double centerX = size.width / 2;
     final double centerY = size.height / 2;
-    final double radius = size.width * 0.8; // Estrela gigante ocupando metade/maioria do centro
+    final double radius = size.width * 0.8;
     final double innerRadius = radius / 2.5;
 
-    const double angle = -90 * (3.1415926535 / 180); // aponta para o topo
+    const double angle = -90 * (3.1415926535 / 180);
     const double step = 360 / 10 * (3.1415926535 / 180);
 
     for (int i = 0; i < 10; i++) {
@@ -500,6 +604,7 @@ class MemoryCardWidget extends StatefulWidget {
   final String content;
   final bool isFaceUp;
   final bool isMatched;
+  final double fontSize;
   final VoidCallback onTap;
 
   const MemoryCardWidget({
@@ -507,6 +612,7 @@ class MemoryCardWidget extends StatefulWidget {
     required this.content,
     required this.isFaceUp,
     required this.isMatched,
+    required this.fontSize,
     required this.onTap,
   });
 
@@ -553,6 +659,7 @@ class _MemoryCardWidgetState extends State<MemoryCardWidget> with SingleTickerPr
 
   @override
   Widget build(BuildContext context) {
+    final isDark = isDarkModeNotifier.value;
     return AnimatedBuilder(
       animation: _animation,
       builder: (context, child) {
@@ -569,8 +676,13 @@ class _MemoryCardWidgetState extends State<MemoryCardWidget> with SingleTickerPr
             borderRadius: BorderRadius.circular(12),
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: isBack
+                    ? (isDark ? const Color(0xFF1B2A47) : Colors.white)
+                    : (isDark ? const Color(0xFF0D1B2A) : Colors.white),
                 borderRadius: BorderRadius.circular(12),
+                border: isDark 
+                    ? Border.all(color: Colors.white12, width: 1.5)
+                    : Border.all(color: Colors.grey.shade300, width: 1.5),
                 boxShadow: const [
                   BoxShadow(
                     color: Colors.black26,
@@ -586,15 +698,15 @@ class _MemoryCardWidgetState extends State<MemoryCardWidget> with SingleTickerPr
                         alignment: Alignment.center,
                         child: Text(
                           widget.content,
-                          style: const TextStyle(fontSize: 42), // Tamanho do emoji aumentado
+                          style: TextStyle(fontSize: widget.fontSize),
                         ),
                       )
-                    : const Text(
+                    : Text(
                         '—',
                         style: TextStyle(
                           fontSize: 30,
                           fontWeight: FontWeight.bold,
-                          color: Colors.grey,
+                          color: isDark ? Colors.white30 : Colors.grey,
                         ),
                       ),
               ),
