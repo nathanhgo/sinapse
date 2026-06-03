@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 // Notificador global para controlar o estado do Modo Escuro
 final ValueNotifier<bool> isDarkModeNotifier = ValueNotifier<bool>(false);
@@ -39,4 +40,166 @@ class AppColors {
   static Color get wordGameKeyboardKeyText => isDarkModeNotifier.value ? Colors.white : Colors.black87;
   static Color get wordGameDialogBg => isDarkModeNotifier.value ? const Color(0xFF0D1B2A) : Colors.white;
   static Color get wordGameDialogText => isDarkModeNotifier.value ? Colors.white : Colors.black87;
+}
+
+class StreakCalendarDialog extends StatefulWidget {
+  const StreakCalendarDialog({super.key});
+
+  @override
+  State<StreakCalendarDialog> createState() => _StreakCalendarDialogState();
+}
+
+class _StreakCalendarDialogState extends State<StreakCalendarDialog> {
+  DateTime _selectedMonth = DateTime.now();
+  List<String> _playedDates = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHistory();
+  }
+
+  Future<void> _loadHistory() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
+      setState(() => _loading = false);
+      return;
+    }
+
+    try {
+      final data = await Supabase.instance.client
+          .from('play_history')
+          .select('play_date')
+          .eq('user_id', user.id);
+
+      final dates = (data as List).map((row) => row['play_date'] as String).toList();
+      setState(() {
+        _playedDates = dates;
+        _loading = false;
+      });
+    } catch (e) {
+      debugPrint('Erro ao carregar historico: $e');
+      setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = isDarkModeNotifier.value;
+    final dialogBg = isDark ? const Color(0xFF1B2A47) : Colors.white;
+    final titleColor = isDark ? Colors.white : AppColors.azulPrincipalClaro;
+    final textColor = isDark ? Colors.white : Colors.black87;
+
+    // Dias do mês
+    final firstDayOfMonth = DateTime(_selectedMonth.year, _selectedMonth.month, 1);
+    final firstDayOffset = firstDayOfMonth.weekday % 7;
+    final daysInMonth = DateTime(_selectedMonth.year, _selectedMonth.month + 1, 0).day;
+
+    final monthNames = [
+      'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+      'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+    ];
+    final monthName = monthNames[_selectedMonth.month - 1];
+
+    return AlertDialog(
+      backgroundColor: dialogBg,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          IconButton(
+            icon: Icon(Icons.chevron_left, color: titleColor),
+            onPressed: () {
+              setState(() {
+                _selectedMonth = DateTime(_selectedMonth.year, _selectedMonth.month - 1);
+              });
+            },
+          ),
+          Text(
+            '$monthName ${_selectedMonth.year}',
+            style: TextStyle(color: titleColor, fontWeight: FontWeight.bold, fontSize: 18),
+          ),
+          IconButton(
+            icon: Icon(Icons.chevron_right, color: titleColor),
+            onPressed: () {
+              setState(() {
+                _selectedMonth = DateTime(_selectedMonth.year, _selectedMonth.month + 1);
+              });
+            },
+          ),
+        ],
+      ),
+      content: _loading
+          ? const SizedBox(
+              height: 200,
+              child: Center(child: CircularProgressIndicator()),
+            )
+          : SizedBox(
+              width: 300,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: const [
+                      Expanded(child: Text('D', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
+                      Expanded(child: Text('S', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
+                      Expanded(child: Text('T', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
+                      Expanded(child: Text('Q', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
+                      Expanded(child: Text('Q', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
+                      Expanded(child: Text('S', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
+                      Expanded(child: Text('S', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 7,
+                      mainAxisSpacing: 4,
+                      crossAxisSpacing: 4,
+                    ),
+                    itemCount: daysInMonth + firstDayOffset,
+                    itemBuilder: (context, index) {
+                      if (index < firstDayOffset) {
+                        return const SizedBox();
+                      }
+                      final day = index - firstDayOffset + 1;
+                      final dateStr = '${_selectedMonth.year}-${_selectedMonth.month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
+                      final hasPlayed = _playedDates.contains(dateStr);
+
+                      return Container(
+                        decoration: BoxDecoration(
+                          color: hasPlayed
+                              ? AppColors.rosaBotao
+                              : (isDark ? Colors.white.withAlpha(20) : Colors.grey.shade100),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Center(
+                          child: Text(
+                            '$day',
+                            style: TextStyle(
+                              color: hasPlayed
+                                  ? Colors.white
+                                  : textColor,
+                              fontWeight: hasPlayed ? FontWeight.bold : FontWeight.normal,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Fechar'),
+        ),
+      ],
+    );
+  }
 }

@@ -121,3 +121,29 @@ CREATE POLICY "Usuários podem cancelar/remover amizades"
 CREATE INDEX IF NOT EXISTS idx_friendships_sender ON public.friendships(sender_id);
 CREATE INDEX IF NOT EXISTS idx_friendships_receiver ON public.friendships(receiver_id);
 CREATE INDEX IF NOT EXISTS idx_friendships_status ON public.friendships(status);
+
+-- Adicionar coluna de recorde para o jogo Genius (se não existir)
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS best_score_genius integer;
+
+-- Criar tabela de histórico de jogadas para calendário de ofensiva
+CREATE TABLE IF NOT EXISTS public.play_history (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+  play_date date NOT NULL DEFAULT CURRENT_DATE,
+  created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
+  UNIQUE(user_id, play_date)
+);
+
+-- Habilitar RLS
+ALTER TABLE public.play_history ENABLE ROW LEVEL SECURITY;
+
+-- Políticas de RLS para play_history
+DROP POLICY IF EXISTS "Usuários podem ver seu próprio histórico de jogadas" ON public.play_history;
+CREATE POLICY "Usuários podem ver seu próprio histórico de jogadas"
+  ON public.play_history FOR SELECT
+  USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Usuários podem inserir seu próprio histórico de jogadas" ON public.play_history;
+CREATE POLICY "Usuários podem inserir seu próprio histórico de jogadas"
+  ON public.play_history FOR INSERT
+  WITH CHECK (auth.uid() = user_id);

@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'theme.dart';
+import 'soundEffects.dart';
 
 class MemoryGamePage extends StatefulWidget {
   final String difficulty;
@@ -189,6 +190,8 @@ class _MemoryGamePageState extends State<MemoryGamePage> {
     final selectedCard = _cards[index];
     if (selectedCard.isFaceUp || selectedCard.isMatched) return;
 
+    SoundEffects.playCardFlip();
+
     setState(() {
       selectedCard.isFaceUp = true;
     });
@@ -283,6 +286,14 @@ class _MemoryGamePageState extends State<MemoryGamePage> {
           } catch (e) {
             debugPrint('Erro ao atualizar recorde/streak no banco: $e');
           }
+        }
+
+        try {
+          await Supabase.instance.client
+              .from('play_history')
+              .upsert({'user_id': user.id, 'play_date': todayStr});
+        } catch (e) {
+          debugPrint('Erro ao atualizar historico de jogadas no banco: $e');
         }
       }
     }
@@ -414,6 +425,10 @@ class _MemoryGamePageState extends State<MemoryGamePage> {
             ? 34
             : 28;
 
+    final now = DateTime.now();
+    final todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+    final playedToday = _lastPlayDate == todayStr;
+
     return Scaffold(
       backgroundColor: azulPrincipal,
       appBar: AppBar(
@@ -430,23 +445,35 @@ class _MemoryGamePageState extends State<MemoryGamePage> {
         centerTitle: true,
         actions: [
           if (!_isCasual)
-            Container(
-              margin: const EdgeInsets.only(right: 16),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.white.withAlpha((255 * 0.15).round()),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.local_fire_department, color: Colors.deepOrange, size: 20),
-                  const SizedBox(width: 4),
-                  Text(
-                    _streak.toString(),
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-                  ),
-                ],
+            GestureDetector(
+              onTap: () {
+                showDialog(
+                  context: context,
+                  builder: (context) => const StreakCalendarDialog(),
+                );
+              },
+              child: Container(
+                margin: const EdgeInsets.only(right: 16),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withAlpha((255 * 0.15).round()),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.local_fire_department,
+                      color: playedToday ? Colors.deepOrange : Colors.grey.shade400,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      _streak.toString(),
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                  ],
+                ),
               ),
             ),
         ],

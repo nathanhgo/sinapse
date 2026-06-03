@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:math';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'theme.dart';
+import 'soundEffects.dart';
 
 class WordGamePage extends StatefulWidget {
   final String difficulty;
@@ -156,6 +157,14 @@ class _WordGamePageState extends State<WordGamePage> {
         debugPrint('Erro ao atualizar streak/recorde no WordGame: $e');
       }
     }
+
+    try {
+      await Supabase.instance.client
+          .from('play_history')
+          .upsert({'user_id': user.id, 'play_date': todayStr});
+    } catch (e) {
+      debugPrint('Erro ao atualizar historico de jogadas no WordGame: $e');
+    }
   }
 
   void _startNewGame() {
@@ -177,6 +186,8 @@ class _WordGamePageState extends State<WordGamePage> {
 
   void _onKeyPress(String letter) {
     if (_guesses.length >= _maxAttempts) return;
+
+    SoundEffects.playKeyboardClick();
 
     setState(() {
       if (letter == "ENTER") {

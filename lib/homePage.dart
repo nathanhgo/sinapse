@@ -3,6 +3,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'profilePage.dart';
 import 'memoryGamePage.dart';
 import 'wordGamePage.dart';
+import 'geniusGamePage.dart';
+import 'puzzleGamePage.dart';
 import 'theme.dart';
 
 void main() {
@@ -59,12 +61,15 @@ class _HomePageState extends State<HomePage> {
   bool _isCasual = false;
   int? _bestScoreMemory;
   int? _bestScoreWord;
+  int? _bestScoreGenius;
+  int? _bestScorePuzzle;
+  String? _lastPlayDate;
   bool _isLoading = true;
 
   // Sistema de Amizades, Notificações e Rankings
   bool get _isGuest => Supabase.instance.client.auth.currentUser == null;
   String _rankingContext = 'global'; // 'global' ou 'amigos'
-  String _rankingCriterion = 'streak'; // 'streak', 'memory', 'word'
+  String _rankingCriterion = 'streak'; // 'streak', 'memory', 'word', 'genius'
   List<Map<String, dynamic>> _rankingList = [];
   bool _isLoadingRanking = false;
   int _pendingRequestsCount = 0;
@@ -94,16 +99,24 @@ class _HomePageState extends State<HomePage> {
       try {
         data = await Supabase.instance.client
             .from('profiles')
-            .select('streak, name, is_casual, avatar, best_score_memory, best_score_word, last_play_date')
+            .select('streak, name, is_casual, avatar, best_score_memory, best_score_word, best_score_genius, best_score_puzzle, last_play_date')
             .eq('id', user.id)
             .single();
       } catch (e) {
-        debugPrint('Aviso: Falha ao buscar best_score_word, tentando sem a coluna: $e');
-        data = await Supabase.instance.client
-            .from('profiles')
-            .select('streak, name, is_casual, avatar, best_score_memory, last_play_date')
-            .eq('id', user.id)
-            .single();
+        debugPrint('Aviso: Falha ao buscar best_score_word/genius/puzzle, tentando fallback com menos colunas: $e');
+        try {
+          data = await Supabase.instance.client
+              .from('profiles')
+              .select('streak, name, is_casual, avatar, best_score_memory, best_score_word, best_score_genius, last_play_date')
+              .eq('id', user.id)
+              .single();
+        } catch (ex) {
+          data = await Supabase.instance.client
+              .from('profiles')
+              .select('streak, name, is_casual, avatar, best_score_memory, last_play_date')
+              .eq('id', user.id)
+              .single();
+        }
       }
 
       int streakFromDb = data['streak'] as int? ?? 0;
@@ -130,9 +143,12 @@ class _HomePageState extends State<HomePage> {
 
       setState(() {
         _streak = streakFromDb;
+        _lastPlayDate = lastPlayDateStr;
         _isCasual = data['is_casual'] as bool? ?? false;
         _bestScoreMemory = data['best_score_memory'] as int?;
         _bestScoreWord = data.containsKey('best_score_word') ? data['best_score_word'] as int? : null;
+        _bestScoreGenius = data.containsKey('best_score_genius') ? data['best_score_genius'] as int? : null;
+        _bestScorePuzzle = data.containsKey('best_score_puzzle') ? data['best_score_puzzle'] as int? : null;
       });
       _loadRanking();
       _loadPendingRequestsCount();
@@ -142,6 +158,7 @@ class _HomePageState extends State<HomePage> {
         _isCasual = false;
         _bestScoreMemory = null;
         _bestScoreWord = null;
+        _bestScoreGenius = null;
       });
     } finally {
       setState(() => _isLoading = false);
@@ -183,21 +200,56 @@ class _HomePageState extends State<HomePage> {
       List<Map<String, dynamic>> list = [];
 
       if (_rankingContext == 'global') {
-        var query = Supabase.instance.client.from('profiles').select('id, name, username, avatar, streak, best_score_memory, best_score_word');
-        if (_rankingCriterion == 'streak') {
-          final data = await query.order('streak', ascending: false);
-          list = List<Map<String, dynamic>>.from(data);
-        } else if (_rankingCriterion == 'memory') {
-          final data = await query.not('best_score_memory', 'is', null).order('best_score_memory', ascending: true);
-          list = List<Map<String, dynamic>>.from(data);
-        } else if (_rankingCriterion == 'word') {
+        List<dynamic> data = [];
+        try {
+          var query = Supabase.instance.client.from('profiles').select('id, name, username, avatar, streak, best_score_memory, best_score_word, best_score_genius, best_score_puzzle');
+          if (_rankingCriterion == 'streak') {
+            data = await query.order('streak', ascending: false);
+          } else if (_rankingCriterion == 'memory') {
+            data = await query.not('best_score_memory', 'is', null).order('best_score_memory', ascending: true);
+          } else if (_rankingCriterion == 'word') {
+            data = await query.not('best_score_word', 'is', null).order('best_score_word', ascending: true);
+          } else if (_rankingCriterion == 'genius') {
+            data = await query.not('best_score_genius', 'is', null).order('best_score_genius', ascending: false);
+          } else if (_rankingCriterion == 'puzzle') {
+            data = await query.not('best_score_puzzle', 'is', null).order('best_score_puzzle', ascending: true);
+          }
+        } catch (e) {
+          // Fallback se colunas extras não existirem
           try {
-            final data = await query.not('best_score_word', 'is', null).order('best_score_word', ascending: true);
-            list = List<Map<String, dynamic>>.from(data);
-          } catch (e) {
-            list = [];
+            var query = Supabase.instance.client.from('profiles').select('id, name, username, avatar, streak, best_score_memory, best_score_word, best_score_genius');
+            if (_rankingCriterion == 'streak') {
+              data = await query.order('streak', ascending: false);
+            } else if (_rankingCriterion == 'memory') {
+              data = await query.not('best_score_memory', 'is', null).order('best_score_memory', ascending: true);
+            } else if (_rankingCriterion == 'word') {
+              data = await query.not('best_score_word', 'is', null).order('best_score_word', ascending: true);
+            } else if (_rankingCriterion == 'genius') {
+              data = await query.not('best_score_genius', 'is', null).order('best_score_genius', ascending: false);
+            } else {
+              data = await query.order('streak', ascending: false);
+            }
+          } catch (ex) {
+            var query = Supabase.instance.client.from('profiles').select('id, name, username, avatar, streak, best_score_memory, best_score_word');
+            if (_rankingCriterion == 'streak') {
+              data = await query.order('streak', ascending: false);
+            } else if (_rankingCriterion == 'memory') {
+              data = await query.not('best_score_memory', 'is', null).order('best_score_memory', ascending: true);
+            } else {
+              try {
+                data = await query.not('best_score_word', 'is', null).order('best_score_word', ascending: true);
+              } catch (_) {
+                var fallbackQuery = Supabase.instance.client.from('profiles').select('id, name, username, avatar, streak, best_score_memory');
+                if (_rankingCriterion == 'memory') {
+                  data = await fallbackQuery.not('best_score_memory', 'is', null).order('best_score_memory', ascending: true);
+                } else {
+                  data = await fallbackQuery.order('streak', ascending: false);
+                }
+              }
+            }
           }
         }
+        list = List<Map<String, dynamic>>.from(data);
       } else {
         // Amigos
         final friendshipsData = await Supabase.instance.client
@@ -214,25 +266,70 @@ class _HomePageState extends State<HomePage> {
 
         friendIds.add(userId);
 
-        var query = Supabase.instance.client
-            .from('profiles')
-            .select('id, name, username, avatar, streak, best_score_memory, best_score_word')
-            .inFilter('id', friendIds);
+        List<dynamic> data = [];
+        try {
+          var query = Supabase.instance.client
+              .from('profiles')
+              .select('id, name, username, avatar, streak, best_score_memory, best_score_word, best_score_genius, best_score_puzzle')
+              .inFilter('id', friendIds);
 
-        if (_rankingCriterion == 'streak') {
-          final data = await query.order('streak', ascending: false);
-          list = List<Map<String, dynamic>>.from(data);
-        } else if (_rankingCriterion == 'memory') {
-          final data = await query.not('best_score_memory', 'is', null).order('best_score_memory', ascending: true);
-          list = List<Map<String, dynamic>>.from(data);
-        } else if (_rankingCriterion == 'word') {
+          if (_rankingCriterion == 'streak') {
+            data = await query.order('streak', ascending: false);
+          } else if (_rankingCriterion == 'memory') {
+            data = await query.not('best_score_memory', 'is', null).order('best_score_memory', ascending: true);
+          } else if (_rankingCriterion == 'word') {
+            data = await query.not('best_score_word', 'is', null).order('best_score_word', ascending: true);
+          } else if (_rankingCriterion == 'genius') {
+            data = await query.not('best_score_genius', 'is', null).order('best_score_genius', ascending: false);
+          } else if (_rankingCriterion == 'puzzle') {
+            data = await query.not('best_score_puzzle', 'is', null).order('best_score_puzzle', ascending: true);
+          }
+        } catch (e) {
           try {
-            final data = await query.not('best_score_word', 'is', null).order('best_score_word', ascending: true);
-            list = List<Map<String, dynamic>>.from(data);
-          } catch (e) {
-            list = [];
+            var query = Supabase.instance.client
+                .from('profiles')
+                .select('id, name, username, avatar, streak, best_score_memory, best_score_word, best_score_genius')
+                .inFilter('id', friendIds);
+
+            if (_rankingCriterion == 'streak') {
+              data = await query.order('streak', ascending: false);
+            } else if (_rankingCriterion == 'memory') {
+              data = await query.not('best_score_memory', 'is', null).order('best_score_memory', ascending: true);
+            } else if (_rankingCriterion == 'word') {
+              data = await query.not('best_score_word', 'is', null).order('best_score_word', ascending: true);
+            } else if (_rankingCriterion == 'genius') {
+              data = await query.not('best_score_genius', 'is', null).order('best_score_genius', ascending: false);
+            } else {
+              data = await query.order('streak', ascending: false);
+            }
+          } catch (ex) {
+            var query = Supabase.instance.client
+                .from('profiles')
+                .select('id, name, username, avatar, streak, best_score_memory, best_score_word')
+                .inFilter('id', friendIds);
+
+            if (_rankingCriterion == 'streak') {
+              data = await query.order('streak', ascending: false);
+            } else if (_rankingCriterion == 'memory') {
+              data = await query.not('best_score_memory', 'is', null).order('best_score_memory', ascending: true);
+            } else {
+              try {
+                data = await query.not('best_score_word', 'is', null).order('best_score_word', ascending: true);
+              } catch (_) {
+                var fallbackQuery = Supabase.instance.client
+                    .from('profiles')
+                    .select('id, name, username, avatar, streak, best_score_memory')
+                    .inFilter('id', friendIds);
+                if (_rankingCriterion == 'memory') {
+                  data = await fallbackQuery.not('best_score_memory', 'is', null).order('best_score_memory', ascending: true);
+                } else {
+                  data = await fallbackQuery.order('streak', ascending: false);
+                }
+              }
+            }
           }
         }
+        list = List<Map<String, dynamic>>.from(data);
       }
 
       setState(() {
@@ -548,11 +645,28 @@ class _HomePageState extends State<HomePage> {
     final isDark = isDarkModeNotifier.value;
     final dialogBg = isDark ? const Color(0xFF0D1B2A) : Colors.white;
 
-    final profileData = await Supabase.instance.client
-        .from('profiles')
-        .select('name, username, avatar, streak, best_score_memory, best_score_word')
-        .eq('id', otherId)
-        .single();
+    Map<String, dynamic> profileData;
+    try {
+      profileData = await Supabase.instance.client
+          .from('profiles')
+          .select('name, username, avatar, streak, best_score_memory, best_score_word, best_score_genius, best_score_puzzle')
+          .eq('id', otherId)
+          .single();
+    } catch (e) {
+      try {
+        profileData = await Supabase.instance.client
+            .from('profiles')
+            .select('name, username, avatar, streak, best_score_memory, best_score_word, best_score_genius')
+            .eq('id', otherId)
+            .single();
+      } catch (ex) {
+        profileData = await Supabase.instance.client
+            .from('profiles')
+            .select('name, username, avatar, streak, best_score_memory, best_score_word')
+            .eq('id', otherId)
+            .single();
+      }
+    }
 
     final name = profileData['name'] ?? 'Usuário';
     final username = profileData['username'] ?? '';
@@ -561,6 +675,8 @@ class _HomePageState extends State<HomePage> {
     final streak = profileData['streak'] as int? ?? 0;
     final memoryScore = profileData['best_score_memory'] as int?;
     final wordScore = profileData.containsKey('best_score_word') ? profileData['best_score_word'] as int? : null;
+    final geniusScore = profileData.containsKey('best_score_genius') ? profileData['best_score_genius'] as int? : null;
+    final puzzleScore = profileData.containsKey('best_score_puzzle') ? profileData['best_score_puzzle'] as int? : null;
 
     if (!mounted) return;
 
@@ -649,12 +765,24 @@ class _HomePageState extends State<HomePage> {
                       const SizedBox(height: 16),
                       Divider(color: isDark ? Colors.white24 : Colors.black12),
                       const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      Column(
                         children: [
-                          _buildStatItem('Streak', '$streak 🔥', isDark),
-                          _buildStatItem('Memória', memoryScore != null ? '$memoryScore' : '-', isDark),
-                          _buildStatItem('Palavras', wordScore != null ? '$wordScore' : '-', isDark),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: [
+                              _buildStatItem('Streak', '$streak 🔥', isDark),
+                              _buildStatItem('Memória', memoryScore != null ? '$memoryScore' : '-', isDark),
+                              _buildStatItem('Palavras', wordScore != null ? '$wordScore' : '-', isDark),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: [
+                              _buildStatItem('Genius', geniusScore != null ? '$geniusScore' : '-', isDark),
+                              _buildStatItem('Puzzle', puzzleScore != null ? '$puzzleScore' : '-', isDark),
+                            ],
+                          ),
                         ],
                       ),
                       const SizedBox(height: 20),
@@ -879,13 +1007,24 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           const SizedBox(height: 24),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildCriterionChip('streak', 'Ofensivas', Icons.local_fire_department),
-              _buildCriterionChip('memory', 'Memória', Icons.star),
-              _buildCriterionChip('word', 'Palavras', Icons.sort_by_alpha),
-            ],
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const SizedBox(width: 16),
+                _buildCriterionChip('streak', 'Ofensivas', Icons.local_fire_department),
+                const SizedBox(width: 8),
+                _buildCriterionChip('memory', 'Memória', Icons.star),
+                const SizedBox(width: 8),
+                _buildCriterionChip('word', 'Palavras', Icons.sort_by_alpha),
+                const SizedBox(width: 8),
+                _buildCriterionChip('genius', 'Genius', Icons.pie_chart_outline),
+                const SizedBox(width: 8),
+                _buildCriterionChip('puzzle', 'Quebra-cabeça', Icons.extension_outlined),
+                const SizedBox(width: 16),
+              ],
+            ),
           ),
           const SizedBox(height: 12),
           Expanded(
@@ -983,6 +1122,12 @@ class _HomePageState extends State<HomePage> {
     } else if (_rankingCriterion == 'word') {
       final score = profile['best_score_word'] as int?;
       valueStr = score != null ? '$score tent.' : '-';
+    } else if (_rankingCriterion == 'genius') {
+      final score = profile['best_score_genius'] as int?;
+      valueStr = score != null ? '$score rodadas' : '-';
+    } else if (_rankingCriterion == 'puzzle') {
+      final score = profile['best_score_puzzle'] as int?;
+      valueStr = score != null ? '$score mov.' : '-';
     }
 
     final avatarKey = profile['avatar'] as String? ?? 'psychology';
@@ -1072,7 +1217,13 @@ class _HomePageState extends State<HomePage> {
               _buildDificuldadeOption(
                 context: context,
                 label: 'Fácil',
-                descricao: jogo == 'memory' ? 'Tabuleiro 4x4' : 'Palavras de 5 letras',
+                descricao: jogo == 'memory'
+                    ? 'Tabuleiro 4x4'
+                    : jogo == 'word'
+                        ? 'Palavras de 5 letras'
+                        : jogo == 'puzzle'
+                            ? 'Quebra-cabeça 3x3 (9 peças)'
+                            : '4 cores | Adiciona 1 cor por rodada',
                 cor: Colors.green,
                 onTap: () {
                   Navigator.pop(context);
@@ -1081,10 +1232,20 @@ class _HomePageState extends State<HomePage> {
                       context,
                       MaterialPageRoute(builder: (_) => const MemoryGamePage(difficulty: 'fácil')),
                     ).then((_) => _loadProfile());
-                  } else {
+                  } else if (jogo == 'word') {
                     Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_) => const WordGamePage(difficulty: 'fácil')),
+                    ).then((_) => _loadProfile());
+                  } else if (jogo == 'puzzle') {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const PuzzleGamePage(difficulty: 'fácil')),
+                    ).then((_) => _loadProfile());
+                  } else {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const GeniusGamePage(difficulty: 'fácil')),
                     ).then((_) => _loadProfile());
                   }
                 },
@@ -1093,7 +1254,13 @@ class _HomePageState extends State<HomePage> {
               _buildDificuldadeOption(
                 context: context,
                 label: 'Médio',
-                descricao: jogo == 'memory' ? 'Tabuleiro 5x5' : 'Palavras de 7 letras',
+                descricao: jogo == 'memory'
+                    ? 'Tabuleiro 5x5'
+                    : jogo == 'word'
+                        ? 'Palavras de 7 letras'
+                        : jogo == 'puzzle'
+                            ? 'Quebra-cabeça 4x4 (16 peças)'
+                            : '6 cores | Adiciona 2 cores por rodada',
                 cor: Colors.orange,
                 onTap: () {
                   Navigator.pop(context);
@@ -1102,10 +1269,20 @@ class _HomePageState extends State<HomePage> {
                       context,
                       MaterialPageRoute(builder: (_) => const MemoryGamePage(difficulty: 'médio')),
                     ).then((_) => _loadProfile());
-                  } else {
+                  } else if (jogo == 'word') {
                     Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_) => const WordGamePage(difficulty: 'médio')),
+                    ).then((_) => _loadProfile());
+                  } else if (jogo == 'puzzle') {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const PuzzleGamePage(difficulty: 'médio')),
+                    ).then((_) => _loadProfile());
+                  } else {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const GeniusGamePage(difficulty: 'médio')),
                     ).then((_) => _loadProfile());
                   }
                 },
@@ -1114,7 +1291,13 @@ class _HomePageState extends State<HomePage> {
               _buildDificuldadeOption(
                 context: context,
                 label: 'Difícil',
-                descricao: jogo == 'memory' ? 'Tabuleiro 6x6 (Recorde)' : 'Palavras de 9 letras (Recorde)',
+                descricao: jogo == 'memory'
+                    ? 'Tabuleiro 6x6 (Recorde)'
+                    : jogo == 'word'
+                        ? 'Palavras de 9 letras (Recorde)'
+                        : jogo == 'puzzle'
+                            ? 'Quebra-cabeça 5x5 (25 peças, Recorde)'
+                            : '8 cores | Adiciona 3 cores por rodada (Recorde)',
                 cor: Colors.redAccent,
                 onTap: () {
                   Navigator.pop(context);
@@ -1123,10 +1306,20 @@ class _HomePageState extends State<HomePage> {
                       context,
                       MaterialPageRoute(builder: (_) => const MemoryGamePage(difficulty: 'difícil')),
                     ).then((_) => _loadProfile());
-                  } else {
+                  } else if (jogo == 'word') {
                     Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_) => const WordGamePage(difficulty: 'difícil')),
+                    ).then((_) => _loadProfile());
+                  } else if (jogo == 'puzzle') {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const PuzzleGamePage(difficulty: 'difícil')),
+                    ).then((_) => _loadProfile());
+                  } else {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const GeniusGamePage(difficulty: 'difícil')),
                     ).then((_) => _loadProfile());
                   }
                 },
@@ -1207,6 +1400,9 @@ class _HomePageState extends State<HomePage> {
         final azulBorda = AppColors.azulBorda;
         final rosaBotao = AppColors.rosaBotao;
         final fundoTela = AppColors.fundoTela;
+        final now = DateTime.now();
+        final todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+        final playedToday = _lastPlayDate == todayStr;
 
         // Lista de telas/widgets das abas
         final List<Widget> abas = [
@@ -1261,11 +1457,9 @@ class _HomePageState extends State<HomePage> {
                         icone: Icons.extension_outlined,
                         corFundoIcone: rosaBotao,
                         corTextoBorda: azulBorda,
-                        recordeText: '--',
+                        recordeText: _bestScorePuzzle != null ? '$_bestScorePuzzle mov.' : '--',
                         onTap: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Em breve: Jogo de Quebra-cabeça!')),
-                          );
+                          _mostrarSelecaoDificuldade(context, 'puzzle');
                         },
                       ),
                       _buildGameCard(
@@ -1275,7 +1469,7 @@ class _HomePageState extends State<HomePage> {
                         corTextoBorda: azulBorda,
                         recordeText: _bestScoreWord != null ? '$_bestScoreWord tent.' : '--',
                         onTap: () {
-                          _mostrarSelecaoDificuldade(context, 'wordGame');
+                          _mostrarSelecaoDificuldade(context, 'word');
                         },
                       ),
                       _buildGameCard(
@@ -1283,11 +1477,9 @@ class _HomePageState extends State<HomePage> {
                         icone: Icons.pie_chart_outline,
                         corFundoIcone: rosaBotao,
                         corTextoBorda: azulBorda,
-                        recordeText: '--',
+                        recordeText: _bestScoreGenius != null ? '$_bestScoreGenius rodadas' : '--',
                         onTap: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Em breve: Jogo Genius!')),
-                          );
+                          _mostrarSelecaoDificuldade(context, 'genius');
                         },
                       ),
                     ],
@@ -1358,7 +1550,12 @@ class _HomePageState extends State<HomePage> {
                   actions: [
                     if (_currentIndex == 0 && !_isCasual)
                       InkWell(
-                        onTap: _loadProfile, // Permite clicar para recarregar
+                        onTap: () {
+                          showDialog(
+                            context: context,
+                            builder: (context) => const StreakCalendarDialog(),
+                          );
+                        },
                         borderRadius: BorderRadius.circular(24),
                         child: Container(
                           margin: const EdgeInsets.only(right: 20),
@@ -1377,9 +1574,9 @@ class _HomePageState extends State<HomePage> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(
+                              Icon(
                                 Icons.local_fire_department,
-                                color: Colors.deepOrange,
+                                color: playedToday ? Colors.deepOrange : Colors.grey,
                                 size: 24,
                               ),
                               const SizedBox(width: 8),
@@ -1449,61 +1646,67 @@ class _HomePageState extends State<HomePage> {
     required VoidCallback onTap,
   }) {
     final isDark = isDarkModeNotifier.value;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        decoration: BoxDecoration(
-          color: AppColors.cardFundo,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: isDark ? corTextoBorda.withOpacity(0.5) : corTextoBorda, width: 1.5),
-          boxShadow: const [
-            BoxShadow(
-              color: Colors.black12,
-              blurRadius: 4,
-              offset: Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 75,
-              height: 75,
-              decoration: BoxDecoration(
-                color: corFundoIcone,
-                shape: BoxShape.circle,
-              ),
-              child: Center(child: Icon(icone, color: Colors.white, size: 40)),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              titulo,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: isDark ? Colors.white : corTextoBorda,
-                fontSize: 15,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Row(
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF13223F) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: isDark ? Colors.black.withAlpha((255 * 0.3).round()) : Colors.grey.withAlpha((255 * 0.15).round()),
+            blurRadius: 10,
+            spreadRadius: 1,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.emoji_events, color: Colors.amber, size: 16),
-                const SizedBox(width: 4),
+                Container(
+                  width: 70,
+                  height: 70,
+                  decoration: BoxDecoration(
+                    color: corFundoIcone.withAlpha((255 * 0.15).round()),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(child: Icon(icone, color: corFundoIcone, size: 36)),
+                ),
+                const SizedBox(height: 12),
                 Text(
-                  'Recorde: $recordeText',
+                  titulo,
+                  textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: isDark ? Colors.amber.shade200 : Colors.amber.shade800,
-                    fontSize: 12,
+                    color: isDark ? Colors.white : const Color(0xFF1B2A47),
+                    fontSize: 15,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.emoji_events, color: Colors.amber, size: 16),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Recorde: $recordeText',
+                      style: TextStyle(
+                        color: isDark ? Colors.amber.shade200 : Colors.amber.shade800,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
-          ],
+          ),
         ),
       ),
     );

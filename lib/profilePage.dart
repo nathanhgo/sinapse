@@ -57,11 +57,23 @@ class _ProfilePageState extends State<ProfilePage> {
   String _avatarKey = 'psychology';
   bool _isGuest = true;
   bool _isLoading = true;
+  String? _lastPlayDate;
 
   @override
   void initState() {
     super.initState();
     _loadProfile();
+    isDarkModeNotifier.addListener(_onThemeChanged);
+  }
+
+  void _onThemeChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    isDarkModeNotifier.removeListener(_onThemeChanged);
+    super.dispose();
   }
 
   // Carrega as informações em tempo real no banco do Supabase e valida a validade do streak
@@ -115,6 +127,7 @@ class _ProfilePageState extends State<ProfilePage> {
         _nome = data['name'] as String? ?? 'Usuário Sinapse';
         _username = '@${data['username'] as String? ?? 'usuario'}';
         _streak = streakFromDb;
+        _lastPlayDate = lastPlayDateStr;
         _isCasual = data['is_casual'] as bool? ?? false;
         _avatarKey = data['avatar'] as String? ?? 'psychology';
         _isGuest = false;
@@ -184,15 +197,21 @@ class _ProfilePageState extends State<ProfilePage> {
       return;
     }
 
-    const Color azulPrincipal = Color(0xFF1565C0);
+    final isDark = isDarkModeNotifier.value;
+    final azulPrincipal = AppColors.azulPrincipal;
+    final dialogBg = isDark ? const Color(0xFF1B2A47) : Colors.white;
+    final titleColor = isDark ? Colors.white : AppColors.azulPrincipalClaro;
+    final itemBg = isDark ? const Color(0xFF0D1B2A) : Colors.grey.shade100;
+    final unselectedIconColor = isDark ? Colors.white70 : Colors.grey.shade700;
 
     final String? avatarSelecionado = await showDialog<String>(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text(
+          backgroundColor: dialogBg,
+          title: Text(
             'Escolha seu Avatar',
-            style: TextStyle(fontWeight: FontWeight.bold, color: azulPrincipal),
+            style: TextStyle(fontWeight: FontWeight.bold, color: titleColor),
             textAlign: TextAlign.center,
           ),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -217,7 +236,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   borderRadius: BorderRadius.circular(12),
                   child: Container(
                     decoration: BoxDecoration(
-                      color: isCurrent ? azulPrincipal.withAlpha(25) : Colors.grey.shade100,
+                      color: isCurrent ? azulPrincipal.withAlpha(25) : itemBg,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: isCurrent ? azulPrincipal : Colors.transparent,
@@ -226,7 +245,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                     child: Icon(
                       icon,
-                      color: isCurrent ? azulPrincipal : Colors.grey.shade700,
+                      color: isCurrent ? (isDark ? Colors.white : azulPrincipal) : unselectedIconColor,
                       size: 32,
                     ),
                   ),
@@ -275,30 +294,48 @@ class _ProfilePageState extends State<ProfilePage> {
       return;
     }
 
+    final isDark = isDarkModeNotifier.value;
+    final dialogBg = isDark ? const Color(0xFF1B2A47) : Colors.white;
+    final titleColor = isDark ? Colors.white : AppColors.azulPrincipalClaro;
+    final labelColor = isDark ? Colors.white70 : Colors.black87;
+    final textColor = isDark ? Colors.white : Colors.black87;
+
     final nomeController = TextEditingController(text: _nome);
     final usuarioController = TextEditingController(text: _username.replaceFirst('@', ''));
 
     final bool? confirmados = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Editar Perfil'),
+        backgroundColor: dialogBg,
+        title: Text(
+          'Editar Perfil',
+          style: TextStyle(color: titleColor, fontWeight: FontWeight.bold),
+        ),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: nomeController,
-                decoration: const InputDecoration(
+                style: TextStyle(color: textColor),
+                decoration: InputDecoration(
                   labelText: 'Nome Completo',
-                  prefixIcon: Icon(Icons.person_outline),
+                  labelStyle: TextStyle(color: labelColor),
+                  prefixIcon: Icon(Icons.person_outline, color: isDark ? Colors.white70 : Colors.grey),
+                  enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: isDark ? Colors.white24 : Colors.grey)),
+                  focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: AppColors.rosaBotao)),
                 ),
               ),
               const SizedBox(height: 16),
               TextField(
                 controller: usuarioController,
-                decoration: const InputDecoration(
+                style: TextStyle(color: textColor),
+                decoration: InputDecoration(
                   labelText: 'Nome de Usuário (@)',
-                  prefixIcon: Icon(Icons.alternate_email),
+                  labelStyle: TextStyle(color: labelColor),
+                  prefixIcon: Icon(Icons.alternate_email, color: isDark ? Colors.white70 : Colors.grey),
+                  enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: isDark ? Colors.white24 : Colors.grey)),
+                  focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: AppColors.rosaBotao)),
                 ),
               ),
             ],
@@ -310,8 +347,12 @@ class _ProfilePageState extends State<ProfilePage> {
             child: const Text('Cancelar'),
           ),
           ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.rosaBotao,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Salvar'),
+            child: const Text('Salvar', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -373,12 +414,22 @@ class _ProfilePageState extends State<ProfilePage> {
       return;
     }
 
+    final isDark = isDarkModeNotifier.value;
+    final dialogBg = isDark ? const Color(0xFF1B2A47) : Colors.white;
+    final titleColor = isDark ? Colors.redAccent : Colors.red;
+    final textColor = isDark ? Colors.white70 : Colors.black87;
+
     final bool? confirmados = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Excluir Conta permanentemente?'),
-        content: const Text(
+        backgroundColor: dialogBg,
+        title: Text(
+          'Excluir Conta permanentemente?',
+          style: TextStyle(color: titleColor, fontWeight: FontWeight.bold),
+        ),
+        content: Text(
           'Tem certeza absoluta de que deseja excluir sua conta?\n\nEsta ação é irreversível. Todos os seus dados, pontuações e ofensivas serão apagados dos nossos servidores.',
+          style: TextStyle(color: textColor),
         ),
         actions: [
           TextButton(
@@ -436,9 +487,12 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
-    const Color azulPrincipal = Color(0xFF1565C0);
-    const Color rosaBotao = Color(0xFFD81B60);
+    final Color azulPrincipal = AppColors.azulPrincipal;
+    final Color rosaBotao = AppColors.rosaBotao;
     const Color vermelhoTexto = Color(0xFFB71C1C);
+    final now = DateTime.now();
+    final todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+    final playedToday = _lastPlayDate == todayStr;
 
     return Scaffold(
       backgroundColor: azulPrincipal, 
@@ -474,47 +528,55 @@ class _ProfilePageState extends State<ProfilePage> {
             },
           ),
           if (!_isCasual)
-            Container(
-              margin: const EdgeInsets.only(right: 20),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Colors.black12,
-                    blurRadius: 4,
-                    offset: Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.local_fire_department,
-                    color: Colors.deepOrange,
-                    size: 24,
-                  ),
-                  const SizedBox(width: 8),
-                  _isLoading
-                      ? const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(azulPrincipal),
+            GestureDetector(
+              onTap: () {
+                showDialog(
+                  context: context,
+                  builder: (context) => const StreakCalendarDialog(),
+                );
+              },
+              child: Container(
+                margin: const EdgeInsets.only(right: 20),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black12,
+                      blurRadius: 4,
+                      offset: Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.local_fire_department,
+                      color: playedToday ? Colors.deepOrange : Colors.grey,
+                      size: 24,
+                    ),
+                    const SizedBox(width: 8),
+                    _isLoading
+                        ? SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(azulPrincipal),
+                            ),
+                          )
+                        : Text(
+                            _streak.toString(),
+                            style: TextStyle(
+                              color: azulPrincipal,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                            ),
                           ),
-                        )
-                      : Text(
-                          _streak.toString(),
-                          style: const TextStyle(
-                            color: azulPrincipal,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                ],
+                  ],
+                ),
               ),
             ),
         ],
@@ -556,10 +618,10 @@ class _ProfilePageState extends State<ProfilePage> {
                       right: 0,
                       child: Container(
                         padding: const EdgeInsets.all(6),
-                        decoration: const BoxDecoration(
+                        decoration: BoxDecoration(
                           color: rosaBotao,
                           shape: BoxShape.circle,
-                          boxShadow: [
+                          boxShadow: const [
                             BoxShadow(
                               color: Colors.black26,
                               blurRadius: 3,
@@ -747,9 +809,10 @@ class _ProfilePageState extends State<ProfilePage> {
         disabledBackgroundColor: backgroundColor.withAlpha((255 * 0.6).round()),
         minimumSize: const Size(double.infinity, 52),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(16),
         ),
-        elevation: 3,
+        elevation: 2,
+        shadowColor: Colors.black26,
       ),
       child: Text(
         text,
