@@ -1,5 +1,9 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:http/http.dart' as http;
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'profilePage.dart';
 import 'memoryGamePage.dart';
 import 'wordGamePage.dart';
@@ -74,10 +78,80 @@ class _HomePageState extends State<HomePage> {
   bool _isLoadingRanking = false;
   int _pendingRequestsCount = 0;
 
+  // Sistema de Atualização via GitHub
+  String? _latestVersionName;
+  String? _latestVersionUrl;
+  bool _hasUpdateAvailable = false;
+
   @override
   void initState() {
     super.initState();
     _loadProfile();
+    _checkForUpdates();
+  }
+
+  // Compara se latest (do GitHub) é mais recente que current (do app)
+  bool _isVersionNewer(String current, String latest) {
+    // Limpa prefixos como 'v' ou 'V'
+    String cleanCurrent = current.replaceAll(RegExp(r'^[vV]'), '');
+    String cleanLatest = latest.replaceAll(RegExp(r'^[vV]'), '');
+
+    // Divide a versão e o build number (ex: 1.0.0+2 -> ['1.0.0', '2'])
+    List<String> currentParts = cleanCurrent.split('+');
+    List<String> latestParts = cleanLatest.split('+');
+
+    String currentSemver = currentParts[0];
+    String latestSemver = latestParts[0];
+
+    List<int> currentNums = currentSemver.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+    List<int> latestNums = latestSemver.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+
+    // Garante que ambos tenham pelo menos 3 partes (major, minor, patch)
+    while (currentNums.length < 3) {
+      currentNums.add(0);
+    }
+    while (latestNums.length < 3) {
+      latestNums.add(0);
+    }
+
+    // Compara major, minor, patch
+    for (int i = 0; i < 3; i++) {
+      if (latestNums[i] > currentNums[i]) return true;
+      if (latestNums[i] < currentNums[i]) return false;
+    }
+
+    // Se o semver for idêntico, compara o build number (se disponível)
+    int currentBuild = currentParts.length > 1 ? (int.tryParse(currentParts[1]) ?? 0) : 0;
+    int latestBuild = latestParts.length > 1 ? (int.tryParse(latestParts[1]) ?? 0) : 0;
+
+    return latestBuild > currentBuild;
+  }
+
+  Future<void> _checkForUpdates() async {
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      final currentVersion = "${packageInfo.version}+${packageInfo.buildNumber}";
+
+      final response = await http.get(
+        Uri.parse('https://api.github.com/repos/nathanhgo/sinapse/releases/latest'),
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body);
+        final latestVersion = json['tag_name'] as String;
+        final htmlUrl = json['html_url'] as String;
+
+        if (_isVersionNewer(currentVersion, latestVersion)) {
+          setState(() {
+            _latestVersionName = latestVersion;
+            _latestVersionUrl = htmlUrl;
+            _hasUpdateAvailable = true;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Erro ao verificar atualizações: $e');
+    }
   }
 
   // Busca as informações em tempo real no banco do Supabase e valida a validade do streak
@@ -99,21 +173,29 @@ class _HomePageState extends State<HomePage> {
       try {
         data = await Supabase.instance.client
             .from('profiles')
-            .select('streak, name, is_casual, avatar, best_score_memory, best_score_word, best_score_genius, best_score_puzzle, last_play_date')
+            .select(
+              'streak, name, is_casual, avatar, best_score_memory, best_score_word, best_score_genius, best_score_puzzle, last_play_date',
+            )
             .eq('id', user.id)
             .single();
       } catch (e) {
-        debugPrint('Aviso: Falha ao buscar best_score_word/genius/puzzle, tentando fallback com menos colunas: $e');
+        debugPrint(
+          'Aviso: Falha ao buscar best_score_word/genius/puzzle, tentando fallback com menos colunas: $e',
+        );
         try {
           data = await Supabase.instance.client
               .from('profiles')
-              .select('streak, name, is_casual, avatar, best_score_memory, best_score_word, best_score_genius, last_play_date')
+              .select(
+                'streak, name, is_casual, avatar, best_score_memory, best_score_word, best_score_genius, last_play_date',
+              )
               .eq('id', user.id)
               .single();
         } catch (ex) {
           data = await Supabase.instance.client
               .from('profiles')
-              .select('streak, name, is_casual, avatar, best_score_memory, last_play_date')
+              .select(
+                'streak, name, is_casual, avatar, best_score_memory, last_play_date',
+              )
               .eq('id', user.id)
               .single();
         }
@@ -123,11 +205,14 @@ class _HomePageState extends State<HomePage> {
       final lastPlayDateStr = data['last_play_date'] as String?;
 
       final now = DateTime.now();
-      final todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+      final todayStr =
+          "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
       final yesterday = now.subtract(const Duration(days: 1));
-      final yesterdayStr = "${yesterday.year}-${yesterday.month.toString().padLeft(2, '0')}-${yesterday.day.toString().padLeft(2, '0')}";
+      final yesterdayStr =
+          "${yesterday.year}-${yesterday.month.toString().padLeft(2, '0')}-${yesterday.day.toString().padLeft(2, '0')}";
 
-      if (lastPlayDateStr == null || (lastPlayDateStr != todayStr && lastPlayDateStr != yesterdayStr)) {
+      if (lastPlayDateStr == null ||
+          (lastPlayDateStr != todayStr && lastPlayDateStr != yesterdayStr)) {
         if (streakFromDb > 0) {
           streakFromDb = 0;
           try {
@@ -146,9 +231,15 @@ class _HomePageState extends State<HomePage> {
         _lastPlayDate = lastPlayDateStr;
         _isCasual = data['is_casual'] as bool? ?? false;
         _bestScoreMemory = data['best_score_memory'] as int?;
-        _bestScoreWord = data.containsKey('best_score_word') ? data['best_score_word'] as int? : null;
-        _bestScoreGenius = data.containsKey('best_score_genius') ? data['best_score_genius'] as int? : null;
-        _bestScorePuzzle = data.containsKey('best_score_puzzle') ? data['best_score_puzzle'] as int? : null;
+        _bestScoreWord = data.containsKey('best_score_word')
+            ? data['best_score_word'] as int?
+            : null;
+        _bestScoreGenius = data.containsKey('best_score_genius')
+            ? data['best_score_genius'] as int?
+            : null;
+        _bestScorePuzzle = data.containsKey('best_score_puzzle')
+            ? data['best_score_puzzle'] as int?
+            : null;
       });
       _loadRanking();
       _loadPendingRequestsCount();
@@ -202,46 +293,82 @@ class _HomePageState extends State<HomePage> {
       if (_rankingContext == 'global') {
         List<dynamic> data = [];
         try {
-          var query = Supabase.instance.client.from('profiles').select('id, name, username, avatar, streak, best_score_memory, best_score_word, best_score_genius, best_score_puzzle');
+          var query = Supabase.instance.client
+              .from('profiles')
+              .select(
+                'id, name, username, avatar, streak, best_score_memory, best_score_word, best_score_genius, best_score_puzzle',
+              );
           if (_rankingCriterion == 'streak') {
             data = await query.order('streak', ascending: false);
           } else if (_rankingCriterion == 'memory') {
-            data = await query.not('best_score_memory', 'is', null).order('best_score_memory', ascending: true);
+            data = await query
+                .not('best_score_memory', 'is', null)
+                .order('best_score_memory', ascending: true);
           } else if (_rankingCriterion == 'word') {
-            data = await query.not('best_score_word', 'is', null).order('best_score_word', ascending: true);
+            data = await query
+                .not('best_score_word', 'is', null)
+                .order('best_score_word', ascending: true);
           } else if (_rankingCriterion == 'genius') {
-            data = await query.not('best_score_genius', 'is', null).order('best_score_genius', ascending: false);
+            data = await query
+                .not('best_score_genius', 'is', null)
+                .order('best_score_genius', ascending: false);
           } else if (_rankingCriterion == 'puzzle') {
-            data = await query.not('best_score_puzzle', 'is', null).order('best_score_puzzle', ascending: true);
+            data = await query
+                .not('best_score_puzzle', 'is', null)
+                .order('best_score_puzzle', ascending: true);
           }
         } catch (e) {
           // Fallback se colunas extras não existirem
           try {
-            var query = Supabase.instance.client.from('profiles').select('id, name, username, avatar, streak, best_score_memory, best_score_word, best_score_genius');
+            var query = Supabase.instance.client
+                .from('profiles')
+                .select(
+                  'id, name, username, avatar, streak, best_score_memory, best_score_word, best_score_genius',
+                );
             if (_rankingCriterion == 'streak') {
               data = await query.order('streak', ascending: false);
             } else if (_rankingCriterion == 'memory') {
-              data = await query.not('best_score_memory', 'is', null).order('best_score_memory', ascending: true);
+              data = await query
+                  .not('best_score_memory', 'is', null)
+                  .order('best_score_memory', ascending: true);
             } else if (_rankingCriterion == 'word') {
-              data = await query.not('best_score_word', 'is', null).order('best_score_word', ascending: true);
+              data = await query
+                  .not('best_score_word', 'is', null)
+                  .order('best_score_word', ascending: true);
             } else if (_rankingCriterion == 'genius') {
-              data = await query.not('best_score_genius', 'is', null).order('best_score_genius', ascending: false);
+              data = await query
+                  .not('best_score_genius', 'is', null)
+                  .order('best_score_genius', ascending: false);
             } else {
               data = await query.order('streak', ascending: false);
             }
           } catch (ex) {
-            var query = Supabase.instance.client.from('profiles').select('id, name, username, avatar, streak, best_score_memory, best_score_word');
+            var query = Supabase.instance.client
+                .from('profiles')
+                .select(
+                  'id, name, username, avatar, streak, best_score_memory, best_score_word',
+                );
             if (_rankingCriterion == 'streak') {
               data = await query.order('streak', ascending: false);
             } else if (_rankingCriterion == 'memory') {
-              data = await query.not('best_score_memory', 'is', null).order('best_score_memory', ascending: true);
+              data = await query
+                  .not('best_score_memory', 'is', null)
+                  .order('best_score_memory', ascending: true);
             } else {
               try {
-                data = await query.not('best_score_word', 'is', null).order('best_score_word', ascending: true);
+                data = await query
+                    .not('best_score_word', 'is', null)
+                    .order('best_score_word', ascending: true);
               } catch (_) {
-                var fallbackQuery = Supabase.instance.client.from('profiles').select('id, name, username, avatar, streak, best_score_memory');
+                var fallbackQuery = Supabase.instance.client
+                    .from('profiles')
+                    .select(
+                      'id, name, username, avatar, streak, best_score_memory',
+                    );
                 if (_rankingCriterion == 'memory') {
-                  data = await fallbackQuery.not('best_score_memory', 'is', null).order('best_score_memory', ascending: true);
+                  data = await fallbackQuery
+                      .not('best_score_memory', 'is', null)
+                      .order('best_score_memory', ascending: true);
                 } else {
                   data = await fallbackQuery.order('streak', ascending: false);
                 }
@@ -270,58 +397,86 @@ class _HomePageState extends State<HomePage> {
         try {
           var query = Supabase.instance.client
               .from('profiles')
-              .select('id, name, username, avatar, streak, best_score_memory, best_score_word, best_score_genius, best_score_puzzle')
+              .select(
+                'id, name, username, avatar, streak, best_score_memory, best_score_word, best_score_genius, best_score_puzzle',
+              )
               .inFilter('id', friendIds);
 
           if (_rankingCriterion == 'streak') {
             data = await query.order('streak', ascending: false);
           } else if (_rankingCriterion == 'memory') {
-            data = await query.not('best_score_memory', 'is', null).order('best_score_memory', ascending: true);
+            data = await query
+                .not('best_score_memory', 'is', null)
+                .order('best_score_memory', ascending: true);
           } else if (_rankingCriterion == 'word') {
-            data = await query.not('best_score_word', 'is', null).order('best_score_word', ascending: true);
+            data = await query
+                .not('best_score_word', 'is', null)
+                .order('best_score_word', ascending: true);
           } else if (_rankingCriterion == 'genius') {
-            data = await query.not('best_score_genius', 'is', null).order('best_score_genius', ascending: false);
+            data = await query
+                .not('best_score_genius', 'is', null)
+                .order('best_score_genius', ascending: false);
           } else if (_rankingCriterion == 'puzzle') {
-            data = await query.not('best_score_puzzle', 'is', null).order('best_score_puzzle', ascending: true);
+            data = await query
+                .not('best_score_puzzle', 'is', null)
+                .order('best_score_puzzle', ascending: true);
           }
         } catch (e) {
           try {
             var query = Supabase.instance.client
                 .from('profiles')
-                .select('id, name, username, avatar, streak, best_score_memory, best_score_word, best_score_genius')
+                .select(
+                  'id, name, username, avatar, streak, best_score_memory, best_score_word, best_score_genius',
+                )
                 .inFilter('id', friendIds);
 
             if (_rankingCriterion == 'streak') {
               data = await query.order('streak', ascending: false);
             } else if (_rankingCriterion == 'memory') {
-              data = await query.not('best_score_memory', 'is', null).order('best_score_memory', ascending: true);
+              data = await query
+                  .not('best_score_memory', 'is', null)
+                  .order('best_score_memory', ascending: true);
             } else if (_rankingCriterion == 'word') {
-              data = await query.not('best_score_word', 'is', null).order('best_score_word', ascending: true);
+              data = await query
+                  .not('best_score_word', 'is', null)
+                  .order('best_score_word', ascending: true);
             } else if (_rankingCriterion == 'genius') {
-              data = await query.not('best_score_genius', 'is', null).order('best_score_genius', ascending: false);
+              data = await query
+                  .not('best_score_genius', 'is', null)
+                  .order('best_score_genius', ascending: false);
             } else {
               data = await query.order('streak', ascending: false);
             }
           } catch (ex) {
             var query = Supabase.instance.client
                 .from('profiles')
-                .select('id, name, username, avatar, streak, best_score_memory, best_score_word')
+                .select(
+                  'id, name, username, avatar, streak, best_score_memory, best_score_word',
+                )
                 .inFilter('id', friendIds);
 
             if (_rankingCriterion == 'streak') {
               data = await query.order('streak', ascending: false);
             } else if (_rankingCriterion == 'memory') {
-              data = await query.not('best_score_memory', 'is', null).order('best_score_memory', ascending: true);
+              data = await query
+                  .not('best_score_memory', 'is', null)
+                  .order('best_score_memory', ascending: true);
             } else {
               try {
-                data = await query.not('best_score_word', 'is', null).order('best_score_word', ascending: true);
+                data = await query
+                    .not('best_score_word', 'is', null)
+                    .order('best_score_word', ascending: true);
               } catch (_) {
                 var fallbackQuery = Supabase.instance.client
                     .from('profiles')
-                    .select('id, name, username, avatar, streak, best_score_memory')
+                    .select(
+                      'id, name, username, avatar, streak, best_score_memory',
+                    )
                     .inFilter('id', friendIds);
                 if (_rankingCriterion == 'memory') {
-                  data = await fallbackQuery.not('best_score_memory', 'is', null).order('best_score_memory', ascending: true);
+                  data = await fallbackQuery
+                      .not('best_score_memory', 'is', null)
+                      .order('best_score_memory', ascending: true);
                 } else {
                   data = await fallbackQuery.order('streak', ascending: false);
                 }
@@ -349,7 +504,9 @@ class _HomePageState extends State<HomePage> {
     final data = await Supabase.instance.client
         .from('friendships')
         .select('sender_id, receiver_id, status')
-        .or('and(sender_id.eq.$userId,receiver_id.eq.$otherId),and(sender_id.eq.$otherId,receiver_id.eq.$userId)')
+        .or(
+          'and(sender_id.eq.$userId,receiver_id.eq.$otherId),and(sender_id.eq.$otherId,receiver_id.eq.$userId)',
+        )
         .maybeSingle();
 
     if (data == null) return null;
@@ -387,7 +544,9 @@ class _HomePageState extends State<HomePage> {
     await Supabase.instance.client
         .from('friendships')
         .delete()
-        .or('and(sender_id.eq.$userId,receiver_id.eq.$otherId),and(sender_id.eq.$otherId,receiver_id.eq.$userId)');
+        .or(
+          'and(sender_id.eq.$userId,receiver_id.eq.$otherId),and(sender_id.eq.$otherId,receiver_id.eq.$userId)',
+        );
   }
 
   Future<List<Map<String, dynamic>>> _getPendingRequests() async {
@@ -402,7 +561,9 @@ class _HomePageState extends State<HomePage> {
 
     if (friendships.isEmpty) return [];
 
-    final senderIds = friendships.map<String>((f) => f['sender_id'] as String).toList();
+    final senderIds = friendships
+        .map<String>((f) => f['sender_id'] as String)
+        .toList();
 
     final senders = await Supabase.instance.client
         .from('profiles')
@@ -418,7 +579,9 @@ class _HomePageState extends State<HomePage> {
 
     final data = await Supabase.instance.client
         .from('profiles')
-        .select('id, name, username, avatar, streak, best_score_memory, best_score_word')
+        .select(
+          'id, name, username, avatar, streak, best_score_memory, best_score_word',
+        )
         .ilike('username', '%$queryText%')
         .neq('id', userId)
         .limit(15);
@@ -441,75 +604,219 @@ class _HomePageState extends State<HomePage> {
               future: _getPendingRequests(),
               builder: (context, snapshot) {
                 final requests = snapshot.data ?? [];
-                final isLoading = snapshot.connectionState == ConnectionState.waiting;
+                final isLoading =
+                    snapshot.connectionState == ConnectionState.waiting;
+
+                Widget contentWidget;
+
+                if (isLoading) {
+                  contentWidget = const SizedBox(
+                    height: 100,
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                } else {
+                  final listChildren = <Widget>[];
+
+                  // 1. Mostrar card de atualização se houver
+                  if (_hasUpdateAvailable && _latestVersionName != null) {
+                    listChildren.add(
+                      Card(
+                        color: isDark ? const Color(0xFF1E2D4A) : Colors.blue.shade50,
+                        margin: const EdgeInsets.only(bottom: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: BorderSide(
+                            color: isDark ? Colors.blue.shade800 : Colors.blue.shade200,
+                            width: 1,
+                          ),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.system_update_alt_rounded,
+                                    color: isDark ? Colors.cyanAccent : AppColors.azulPrincipal,
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Atualização Disponível!',
+                                    style: TextStyle(
+                                      color: isDark ? Colors.white : AppColors.azulPrincipal,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Nova versão ($_latestVersionName) encontrada no GitHub.',
+                                style: TextStyle(
+                                  color: isDark ? Colors.white70 : Colors.black87,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.rosaBotao,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 6,
+                                    ),
+                                    minimumSize: Size.zero,
+                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                  ),
+                                  icon: const Icon(Icons.download, size: 14),
+                                  label: const Text(
+                                    'Baixar APK',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  onPressed: () async {
+                                    if (_latestVersionUrl != null) {
+                                      final uri = Uri.parse(_latestVersionUrl!);
+                                      if (await canLaunchUrl(uri)) {
+                                        await launchUrl(
+                                          uri,
+                                          mode: LaunchMode.externalApplication,
+                                        );
+                                      }
+                                    }
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+
+                  // 2. Solicitações de amizade
+                  if (requests.isNotEmpty) {
+                    if (_hasUpdateAvailable) {
+                      listChildren.add(
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8.0, top: 4.0),
+                          child: Text(
+                            'Solicitações de Amizade',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: isDark ? Colors.grey.shade400 : Colors.grey.shade700,
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+
+                    listChildren.addAll(
+                      requests.map((req) {
+                        final avatarKey = req['avatar'] as String? ?? 'psychology';
+                        final avatarIcon = ProfilePage.avatarIcons[avatarKey] ?? Icons.psychology;
+
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: CircleAvatar(
+                            backgroundColor: isDark
+                                ? const Color(0xFF1B2A47)
+                                : Colors.blue.shade100,
+                            child: Icon(
+                              avatarIcon,
+                              color: isDark ? Colors.white : AppColors.azulPrincipal,
+                            ),
+                          ),
+                          title: Text(
+                            req['name'] ?? '',
+                            style: TextStyle(
+                              color: isDark ? Colors.white : Colors.black87,
+                              fontSize: 14,
+                            ),
+                          ),
+                          subtitle: Text(
+                            '@${req['username'] ?? ""}',
+                            style: const TextStyle(color: Colors.grey, fontSize: 12),
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.check, color: Colors.green, size: 20),
+                                constraints: const BoxConstraints(),
+                                padding: const EdgeInsets.all(8),
+                                onPressed: () async {
+                                  await _acceptFriendRequest(req['id']);
+                                  await _loadPendingRequestsCount();
+                                  await _loadRanking();
+                                  setDialogState(() {});
+                                },
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.close, color: Colors.red, size: 20),
+                                constraints: const BoxConstraints(),
+                                padding: const EdgeInsets.all(8),
+                                onPressed: () async {
+                                  await _removeFriendship(req['id']);
+                                  await _loadPendingRequestsCount();
+                                  setDialogState(() {});
+                                },
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                    );
+                  } else if (listChildren.isEmpty) {
+                    listChildren.add(
+                      const SizedBox(
+                        height: 100,
+                        child: Center(
+                          child: Text(
+                            'Nenhuma notificação pendente.',
+                            style: TextStyle(color: Colors.grey),
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+
+                  contentWidget = Container(
+                    width: double.maxFinite,
+                    constraints: const BoxConstraints(maxHeight: 320),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: listChildren,
+                      ),
+                    ),
+                  );
+                }
 
                 return AlertDialog(
                   backgroundColor: dialogBg,
                   title: Text(
-                    'Solicitações de Amizade',
+                    'Notificações',
                     style: TextStyle(
                       color: isDark ? Colors.white : AppColors.azulPrincipal,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  content: isLoading
-                      ? const SizedBox(
-                          height: 100,
-                          child: Center(child: CircularProgressIndicator()),
-                        )
-                      : requests.isEmpty
-                          ? const SizedBox(
-                              height: 100,
-                              child: Center(
-                                child: Text(
-                                  'Nenhuma solicitação pendente.',
-                                  style: TextStyle(color: Colors.grey),
-                                ),
-                              ),
-                            )
-                          : SizedBox(
-                              width: double.maxFinite,
-                              height: 250,
-                              child: ListView.builder(
-                                itemCount: requests.length,
-                                itemBuilder: (context, index) {
-                                  final req = requests[index];
-                                  final avatarKey = req['avatar'] as String? ?? 'psychology';
-                                  final avatarIcon = ProfilePage.avatarIcons[avatarKey] ?? Icons.psychology;
-
-                                  return ListTile(
-                                    leading: CircleAvatar(
-                                      backgroundColor: isDark ? const Color(0xFF1B2A47) : Colors.blue.shade100,
-                                      child: Icon(avatarIcon, color: isDark ? Colors.white : AppColors.azulPrincipal),
-                                    ),
-                                    title: Text(req['name'] ?? '', style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
-                                    subtitle: Text('@${req['username'] ?? ""}', style: const TextStyle(color: Colors.grey)),
-                                    trailing: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        IconButton(
-                                          icon: const Icon(Icons.check, color: Colors.green),
-                                          onPressed: () async {
-                                            await _acceptFriendRequest(req['id']);
-                                            await _loadPendingRequestsCount();
-                                            await _loadRanking();
-                                            setDialogState(() {});
-                                          },
-                                        ),
-                                        IconButton(
-                                          icon: const Icon(Icons.close, color: Colors.red),
-                                          onPressed: () async {
-                                            await _removeFriendship(req['id']);
-                                            await _loadPendingRequestsCount();
-                                            setDialogState(() {});
-                                          },
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
+                  content: contentWidget,
                   actions: [
                     TextButton(
                       child: const Text('Fechar'),
@@ -559,10 +866,14 @@ class _HomePageState extends State<HomePage> {
                         },
                       ),
                       enabledBorder: UnderlineInputBorder(
-                        borderSide: BorderSide(color: isDark ? Colors.white24 : Colors.black26),
+                        borderSide: BorderSide(
+                          color: isDark ? Colors.white24 : Colors.black26,
+                        ),
                       ),
                     ),
-                    style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                    style: TextStyle(
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
                     onSubmitted: (val) {
                       setDialogState(() {});
                     },
@@ -575,13 +886,17 @@ class _HomePageState extends State<HomePage> {
                         return const SizedBox(
                           height: 150,
                           child: Center(
-                            child: Text('Pesquise por nome de usuário.', style: TextStyle(color: Colors.grey)),
+                            child: Text(
+                              'Pesquise por nome de usuário.',
+                              style: TextStyle(color: Colors.grey),
+                            ),
                           ),
                         );
                       }
 
                       final results = snapshot.data ?? [];
-                      final isLoading = snapshot.connectionState == ConnectionState.waiting;
+                      final isLoading =
+                          snapshot.connectionState == ConnectionState.waiting;
 
                       if (isLoading) {
                         return const SizedBox(
@@ -594,7 +909,10 @@ class _HomePageState extends State<HomePage> {
                         return const SizedBox(
                           height: 150,
                           child: Center(
-                            child: Text('Nenhum usuário encontrado.', style: TextStyle(color: Colors.grey)),
+                            child: Text(
+                              'Nenhum usuário encontrado.',
+                              style: TextStyle(color: Colors.grey),
+                            ),
                           ),
                         );
                       }
@@ -606,16 +924,34 @@ class _HomePageState extends State<HomePage> {
                           itemCount: results.length,
                           itemBuilder: (context, index) {
                             final profile = results[index];
-                            final avatarKey = profile['avatar'] as String? ?? 'psychology';
-                            final avatarIcon = ProfilePage.avatarIcons[avatarKey] ?? Icons.psychology;
+                            final avatarKey =
+                                profile['avatar'] as String? ?? 'psychology';
+                            final avatarIcon =
+                                ProfilePage.avatarIcons[avatarKey] ??
+                                Icons.psychology;
 
                             return ListTile(
                               leading: CircleAvatar(
-                                backgroundColor: isDark ? const Color(0xFF1B2A47) : Colors.blue.shade100,
-                                child: Icon(avatarIcon, color: isDark ? Colors.white : AppColors.azulPrincipal),
+                                backgroundColor: isDark
+                                    ? const Color(0xFF1B2A47)
+                                    : Colors.blue.shade100,
+                                child: Icon(
+                                  avatarIcon,
+                                  color: isDark
+                                      ? Colors.white
+                                      : AppColors.azulPrincipal,
+                                ),
                               ),
-                              title: Text(profile['name'] ?? '', style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
-                              subtitle: Text('@${profile['username'] ?? ""}', style: const TextStyle(color: Colors.grey)),
+                              title: Text(
+                                profile['name'] ?? '',
+                                style: TextStyle(
+                                  color: isDark ? Colors.white : Colors.black87,
+                                ),
+                              ),
+                              subtitle: Text(
+                                '@${profile['username'] ?? ""}',
+                                style: const TextStyle(color: Colors.grey),
+                              ),
                               onTap: () {
                                 Navigator.pop(context);
                                 _mostrarDetalhePerfil(profile['id']);
@@ -649,20 +985,26 @@ class _HomePageState extends State<HomePage> {
     try {
       profileData = await Supabase.instance.client
           .from('profiles')
-          .select('name, username, avatar, streak, best_score_memory, best_score_word, best_score_genius, best_score_puzzle')
+          .select(
+            'name, username, avatar, streak, best_score_memory, best_score_word, best_score_genius, best_score_puzzle',
+          )
           .eq('id', otherId)
           .single();
     } catch (e) {
       try {
         profileData = await Supabase.instance.client
             .from('profiles')
-            .select('name, username, avatar, streak, best_score_memory, best_score_word, best_score_genius')
+            .select(
+              'name, username, avatar, streak, best_score_memory, best_score_word, best_score_genius',
+            )
             .eq('id', otherId)
             .single();
       } catch (ex) {
         profileData = await Supabase.instance.client
             .from('profiles')
-            .select('name, username, avatar, streak, best_score_memory, best_score_word')
+            .select(
+              'name, username, avatar, streak, best_score_memory, best_score_word',
+            )
             .eq('id', otherId)
             .single();
       }
@@ -674,9 +1016,15 @@ class _HomePageState extends State<HomePage> {
     final avatarIcon = ProfilePage.avatarIcons[avatarKey] ?? Icons.psychology;
     final streak = profileData['streak'] as int? ?? 0;
     final memoryScore = profileData['best_score_memory'] as int?;
-    final wordScore = profileData.containsKey('best_score_word') ? profileData['best_score_word'] as int? : null;
-    final geniusScore = profileData.containsKey('best_score_genius') ? profileData['best_score_genius'] as int? : null;
-    final puzzleScore = profileData.containsKey('best_score_puzzle') ? profileData['best_score_puzzle'] as int? : null;
+    final wordScore = profileData.containsKey('best_score_word')
+        ? profileData['best_score_word'] as int?
+        : null;
+    final geniusScore = profileData.containsKey('best_score_genius')
+        ? profileData['best_score_genius'] as int?
+        : null;
+    final puzzleScore = profileData.containsKey('best_score_puzzle')
+        ? profileData['best_score_puzzle'] as int?
+        : null;
 
     if (!mounted) return;
 
@@ -689,16 +1037,22 @@ class _HomePageState extends State<HomePage> {
               future: _getFriendshipStatus(otherId),
               builder: (context, snapshot) {
                 final status = snapshot.data;
-                final isLoading = snapshot.connectionState == ConnectionState.waiting;
+                final isLoading =
+                    snapshot.connectionState == ConnectionState.waiting;
 
                 Widget actionButton;
                 if (isLoading) {
                   actionButton = const CircularProgressIndicator();
                 } else if (status == 'friends') {
                   actionButton = ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade800),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red.shade800,
+                    ),
                     icon: const Icon(Icons.person_remove, color: Colors.white),
-                    label: const Text('Remover Amigo', style: TextStyle(color: Colors.white)),
+                    label: const Text(
+                      'Remover Amigo',
+                      style: TextStyle(color: Colors.white),
+                    ),
                     onPressed: () async {
                       await _removeFriendship(otherId);
                       setModalState(() {});
@@ -708,7 +1062,10 @@ class _HomePageState extends State<HomePage> {
                 } else if (status == 'sent_pending') {
                   actionButton = OutlinedButton.icon(
                     icon: const Icon(Icons.hourglass_empty, color: Colors.grey),
-                    label: const Text('Solicitação Pendente', style: TextStyle(color: Colors.grey)),
+                    label: const Text(
+                      'Solicitação Pendente',
+                      style: TextStyle(color: Colors.grey),
+                    ),
                     onPressed: () async {
                       await _removeFriendship(otherId);
                       setModalState(() {});
@@ -716,9 +1073,14 @@ class _HomePageState extends State<HomePage> {
                   );
                 } else if (status == 'received_pending') {
                   actionButton = ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade700),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green.shade700,
+                    ),
                     icon: const Icon(Icons.check, color: Colors.white),
-                    label: const Text('Aceitar Solicitação', style: TextStyle(color: Colors.white)),
+                    label: const Text(
+                      'Aceitar Solicitação',
+                      style: TextStyle(color: Colors.white),
+                    ),
                     onPressed: () async {
                       await _acceptFriendRequest(otherId);
                       await _loadPendingRequestsCount();
@@ -728,9 +1090,14 @@ class _HomePageState extends State<HomePage> {
                   );
                 } else {
                   actionButton = ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.rosaBotao),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.rosaBotao,
+                    ),
                     icon: const Icon(Icons.person_add, color: Colors.white),
-                    label: const Text('Adicionar Amigo', style: TextStyle(color: Colors.white)),
+                    label: const Text(
+                      'Adicionar Amigo',
+                      style: TextStyle(color: Colors.white),
+                    ),
                     onPressed: () async {
                       await _sendFriendRequest(otherId);
                       setModalState(() {});
@@ -740,14 +1107,24 @@ class _HomePageState extends State<HomePage> {
 
                 return AlertDialog(
                   backgroundColor: dialogBg,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                   content: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       CircleAvatar(
                         radius: 36,
-                        backgroundColor: isDark ? const Color(0xFF1B2A47) : Colors.blue.shade100,
-                        child: Icon(avatarIcon, size: 40, color: isDark ? Colors.white : AppColors.azulPrincipal),
+                        backgroundColor: isDark
+                            ? const Color(0xFF1B2A47)
+                            : Colors.blue.shade100,
+                        child: Icon(
+                          avatarIcon,
+                          size: 40,
+                          color: isDark
+                              ? Colors.white
+                              : AppColors.azulPrincipal,
+                        ),
                       ),
                       const SizedBox(height: 12),
                       Text(
@@ -760,7 +1137,10 @@ class _HomePageState extends State<HomePage> {
                       ),
                       Text(
                         '@$username',
-                        style: const TextStyle(color: Colors.grey, fontSize: 14),
+                        style: const TextStyle(
+                          color: Colors.grey,
+                          fontSize: 14,
+                        ),
                       ),
                       const SizedBox(height: 16),
                       Divider(color: isDark ? Colors.white24 : Colors.black12),
@@ -771,16 +1151,32 @@ class _HomePageState extends State<HomePage> {
                             mainAxisAlignment: MainAxisAlignment.spaceAround,
                             children: [
                               _buildStatItem('Streak', '$streak 🔥', isDark),
-                              _buildStatItem('Memória', memoryScore != null ? '$memoryScore' : '-', isDark),
-                              _buildStatItem('Palavras', wordScore != null ? '$wordScore' : '-', isDark),
+                              _buildStatItem(
+                                'Memória',
+                                memoryScore != null ? '$memoryScore' : '-',
+                                isDark,
+                              ),
+                              _buildStatItem(
+                                'Palavras',
+                                wordScore != null ? '$wordScore' : '-',
+                                isDark,
+                              ),
                             ],
                           ),
                           const SizedBox(height: 12),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceAround,
                             children: [
-                              _buildStatItem('Genius', geniusScore != null ? '$geniusScore' : '-', isDark),
-                              _buildStatItem('Puzzle', puzzleScore != null ? '$puzzleScore' : '-', isDark),
+                              _buildStatItem(
+                                'Genius',
+                                geniusScore != null ? '$geniusScore' : '-',
+                                isDark,
+                              ),
+                              _buildStatItem(
+                                'Puzzle',
+                                puzzleScore != null ? '$puzzleScore' : '-',
+                                isDark,
+                              ),
                             ],
                           ),
                         ],
@@ -807,9 +1203,22 @@ class _HomePageState extends State<HomePage> {
   Widget _buildStatItem(String title, String val, bool isDark) {
     return Column(
       children: [
-        Text(title, style: TextStyle(color: isDark ? Colors.white60 : Colors.black54, fontSize: 12)),
+        Text(
+          title,
+          style: TextStyle(
+            color: isDark ? Colors.white60 : Colors.black54,
+            fontSize: 12,
+          ),
+        ),
         const SizedBox(height: 4),
-        Text(val, style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontWeight: FontWeight.bold, fontSize: 16)),
+        Text(
+          val,
+          style: TextStyle(
+            color: isDark ? Colors.white : Colors.black87,
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
+          ),
+        ),
       ],
     );
   }
@@ -828,7 +1237,9 @@ class _HomePageState extends State<HomePage> {
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF1B2A47) : Colors.amber.shade100,
+                  color: isDark
+                      ? const Color(0xFF1B2A47)
+                      : Colors.amber.shade100,
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
@@ -874,7 +1285,9 @@ class _HomePageState extends State<HomePage> {
                 child: Container(
                   padding: const EdgeInsets.all(4),
                   decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF1B2A47) : Colors.grey.shade200,
+                    color: isDark
+                        ? const Color(0xFF1B2A47)
+                        : Colors.grey.shade200,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
@@ -891,7 +1304,9 @@ class _HomePageState extends State<HomePage> {
                             padding: const EdgeInsets.symmetric(vertical: 8),
                             decoration: BoxDecoration(
                               color: _rankingContext == 'global'
-                                  ? (isDark ? const Color(0xFF0D1B2A) : Colors.white)
+                                  ? (isDark
+                                        ? const Color(0xFF0D1B2A)
+                                        : Colors.white)
                                   : Colors.transparent,
                               borderRadius: BorderRadius.circular(8),
                               boxShadow: _rankingContext == 'global'
@@ -900,7 +1315,7 @@ class _HomePageState extends State<HomePage> {
                                         color: Colors.black12,
                                         blurRadius: 4,
                                         offset: Offset(0, 2),
-                                      )
+                                      ),
                                     ]
                                   : null,
                             ),
@@ -909,7 +1324,9 @@ class _HomePageState extends State<HomePage> {
                               'Global',
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
-                                color: isDark ? Colors.white : AppColors.azulPrincipal,
+                                color: isDark
+                                    ? Colors.white
+                                    : AppColors.azulPrincipal,
                               ),
                             ),
                           ),
@@ -927,7 +1344,9 @@ class _HomePageState extends State<HomePage> {
                             padding: const EdgeInsets.symmetric(vertical: 8),
                             decoration: BoxDecoration(
                               color: _rankingContext == 'amigos'
-                                  ? (isDark ? const Color(0xFF0D1B2A) : Colors.white)
+                                  ? (isDark
+                                        ? const Color(0xFF0D1B2A)
+                                        : Colors.white)
                                   : Colors.transparent,
                               borderRadius: BorderRadius.circular(8),
                               boxShadow: _rankingContext == 'amigos'
@@ -936,7 +1355,7 @@ class _HomePageState extends State<HomePage> {
                                         color: Colors.black12,
                                         blurRadius: 4,
                                         offset: Offset(0, 2),
-                                      )
+                                      ),
                                     ]
                                   : null,
                             ),
@@ -945,7 +1364,9 @@ class _HomePageState extends State<HomePage> {
                               'Amigos',
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
-                                color: isDark ? Colors.white : AppColors.azulPrincipal,
+                                color: isDark
+                                    ? Colors.white
+                                    : AppColors.azulPrincipal,
                               ),
                             ),
                           ),
@@ -981,7 +1402,10 @@ class _HomePageState extends State<HomePage> {
                 onTap: _abrirPainelPesquisa,
                 borderRadius: BorderRadius.circular(16),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 14,
+                    horizontal: 16,
+                  ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: const [
@@ -992,7 +1416,7 @@ class _HomePageState extends State<HomePage> {
                       ),
                       SizedBox(width: 12),
                       Text(
-                        'Encontrar novos amigos no Sinapse',
+                        'Adicionar novos amigos',
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 16,
@@ -1013,15 +1437,27 @@ class _HomePageState extends State<HomePage> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 const SizedBox(width: 16),
-                _buildCriterionChip('streak', 'Ofensivas', Icons.local_fire_department),
+                _buildCriterionChip(
+                  'streak',
+                  'Ofensivas',
+                  Icons.local_fire_department,
+                ),
                 const SizedBox(width: 8),
                 _buildCriterionChip('memory', 'Memória', Icons.star),
                 const SizedBox(width: 8),
                 _buildCriterionChip('word', 'Palavras', Icons.sort_by_alpha),
                 const SizedBox(width: 8),
-                _buildCriterionChip('genius', 'Genius', Icons.pie_chart_outline),
+                _buildCriterionChip(
+                  'genius',
+                  'Genius',
+                  Icons.pie_chart_outline,
+                ),
                 const SizedBox(width: 8),
-                _buildCriterionChip('puzzle', 'Quebra-cabeça', Icons.extension_outlined),
+                _buildCriterionChip(
+                  'puzzle',
+                  'Quebra-cabeça',
+                  Icons.extension_outlined,
+                ),
                 const SizedBox(width: 16),
               ],
             ),
@@ -1031,21 +1467,25 @@ class _HomePageState extends State<HomePage> {
             child: _isLoadingRanking
                 ? const Center(child: CircularProgressIndicator())
                 : _rankingList.isEmpty
-                    ? Center(
-                        child: Text(
-                          'Nenhum usuário no ranking.',
-                          style: TextStyle(
-                            color: isDark ? Colors.white54 : Colors.black54,
-                            fontSize: 16,
-                          ),
-                        ),
-                      )
-                    : ListView.builder(
-                        itemCount: _rankingList.length,
-                        itemBuilder: (context, index) {
-                          return _buildRankingItem(index, _rankingList[index], currentUserId);
-                        },
+                ? Center(
+                    child: Text(
+                      'Nenhum usuário no ranking.',
+                      style: TextStyle(
+                        color: isDark ? Colors.white54 : Colors.black54,
+                        fontSize: 16,
                       ),
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: _rankingList.length,
+                    itemBuilder: (context, index) {
+                      return _buildRankingItem(
+                        index,
+                        _rankingList[index],
+                        currentUserId,
+                      );
+                    },
+                  ),
           ),
         ],
       ),
@@ -1066,7 +1506,9 @@ class _HomePageState extends State<HomePage> {
       label: Text(
         label,
         style: TextStyle(
-          color: isSelected ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+          color: isSelected
+              ? Colors.white
+              : (isDark ? Colors.white70 : Colors.black87),
           fontWeight: FontWeight.bold,
           fontSize: 12,
         ),
@@ -1085,18 +1527,34 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildRankingItem(int index, Map<String, dynamic> profile, String currentUserId) {
+  Widget _buildRankingItem(
+    int index,
+    Map<String, dynamic> profile,
+    String currentUserId,
+  ) {
     final isDark = isDarkModeNotifier.value;
     final rank = index + 1;
     final isSelf = profile['id'] == currentUserId;
 
     Widget rankWidget;
     if (rank == 1) {
-      rankWidget = const Icon(Icons.emoji_events, color: Colors.amber, size: 28);
+      rankWidget = const Icon(
+        Icons.emoji_events,
+        color: Colors.amber,
+        size: 28,
+      );
     } else if (rank == 2) {
-      rankWidget = const Icon(Icons.emoji_events, color: Color(0xFFC0C0C0), size: 28);
+      rankWidget = const Icon(
+        Icons.emoji_events,
+        color: Color(0xFFC0C0C0),
+        size: 28,
+      );
     } else if (rank == 3) {
-      rankWidget = const Icon(Icons.emoji_events, color: Color(0xFFCD7F32), size: 28);
+      rankWidget = const Icon(
+        Icons.emoji_events,
+        color: Color(0xFFCD7F32),
+        size: 28,
+      );
     } else {
       rankWidget = Container(
         width: 28,
@@ -1143,7 +1601,9 @@ class _HomePageState extends State<HomePage> {
         borderRadius: BorderRadius.circular(12),
         side: isSelf
             ? BorderSide(color: AppColors.rosaBotao, width: 2)
-            : BorderSide(color: isDark ? const Color(0xFF1B2A47) : Colors.grey.shade200),
+            : BorderSide(
+                color: isDark ? const Color(0xFF1B2A47) : Colors.grey.shade200,
+              ),
       ),
       child: ListTile(
         leading: Row(
@@ -1152,8 +1612,13 @@ class _HomePageState extends State<HomePage> {
             rankWidget,
             const SizedBox(width: 8),
             CircleAvatar(
-              backgroundColor: isDark ? const Color(0xFF1B2A47) : Colors.blue.shade100,
-              child: Icon(avatarIcon, color: isDark ? Colors.white : AppColors.azulPrincipal),
+              backgroundColor: isDark
+                  ? const Color(0xFF1B2A47)
+                  : Colors.blue.shade100,
+              child: Icon(
+                avatarIcon,
+                color: isDark ? Colors.white : AppColors.azulPrincipal,
+              ),
             ),
           ],
         ),
@@ -1191,7 +1656,9 @@ class _HomePageState extends State<HomePage> {
 
         return AlertDialog(
           backgroundColor: dialogBg,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
           title: Text(
             'Escolha a Dificuldade',
             textAlign: TextAlign.center,
@@ -1220,32 +1687,43 @@ class _HomePageState extends State<HomePage> {
                 descricao: jogo == 'memory'
                     ? 'Tabuleiro 4x4'
                     : jogo == 'word'
-                        ? 'Palavras de 5 letras'
-                        : jogo == 'puzzle'
-                            ? 'Quebra-cabeça 3x3 (9 peças)'
-                            : '4 cores | Adiciona 1 cor por rodada',
+                    ? 'Palavras de 5 letras'
+                    : jogo == 'puzzle'
+                    ? 'Quebra-cabeça 3x3 (9 peças)'
+                    : '4 cores | Adiciona 1 cor por rodada',
                 cor: Colors.green,
                 onTap: () {
                   Navigator.pop(context);
                   if (jogo == 'memory') {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => const MemoryGamePage(difficulty: 'fácil')),
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            const MemoryGamePage(difficulty: 'fácil'),
+                      ),
                     ).then((_) => _loadProfile());
                   } else if (jogo == 'word') {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => const WordGamePage(difficulty: 'fácil')),
+                      MaterialPageRoute(
+                        builder: (_) => const WordGamePage(difficulty: 'fácil'),
+                      ),
                     ).then((_) => _loadProfile());
                   } else if (jogo == 'puzzle') {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => const PuzzleGamePage(difficulty: 'fácil')),
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            const PuzzleGamePage(difficulty: 'fácil'),
+                      ),
                     ).then((_) => _loadProfile());
                   } else {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => const GeniusGamePage(difficulty: 'fácil')),
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            const GeniusGamePage(difficulty: 'fácil'),
+                      ),
                     ).then((_) => _loadProfile());
                   }
                 },
@@ -1257,32 +1735,43 @@ class _HomePageState extends State<HomePage> {
                 descricao: jogo == 'memory'
                     ? 'Tabuleiro 5x5'
                     : jogo == 'word'
-                        ? 'Palavras de 7 letras'
-                        : jogo == 'puzzle'
-                            ? 'Quebra-cabeça 4x4 (16 peças)'
-                            : '6 cores | Adiciona 2 cores por rodada',
+                    ? 'Palavras de 7 letras'
+                    : jogo == 'puzzle'
+                    ? 'Quebra-cabeça 4x4 (16 peças)'
+                    : '6 cores | Adiciona 2 cores por rodada',
                 cor: Colors.orange,
                 onTap: () {
                   Navigator.pop(context);
                   if (jogo == 'memory') {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => const MemoryGamePage(difficulty: 'médio')),
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            const MemoryGamePage(difficulty: 'médio'),
+                      ),
                     ).then((_) => _loadProfile());
                   } else if (jogo == 'word') {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => const WordGamePage(difficulty: 'médio')),
+                      MaterialPageRoute(
+                        builder: (_) => const WordGamePage(difficulty: 'médio'),
+                      ),
                     ).then((_) => _loadProfile());
                   } else if (jogo == 'puzzle') {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => const PuzzleGamePage(difficulty: 'médio')),
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            const PuzzleGamePage(difficulty: 'médio'),
+                      ),
                     ).then((_) => _loadProfile());
                   } else {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => const GeniusGamePage(difficulty: 'médio')),
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            const GeniusGamePage(difficulty: 'médio'),
+                      ),
                     ).then((_) => _loadProfile());
                   }
                 },
@@ -1294,32 +1783,44 @@ class _HomePageState extends State<HomePage> {
                 descricao: jogo == 'memory'
                     ? 'Tabuleiro 6x6 (Recorde)'
                     : jogo == 'word'
-                        ? 'Palavras de 9 letras (Recorde)'
-                        : jogo == 'puzzle'
-                            ? 'Quebra-cabeça 5x5 (25 peças, Recorde)'
-                            : '8 cores | Adiciona 3 cores por rodada (Recorde)',
+                    ? 'Palavras de 9 letras (Recorde)'
+                    : jogo == 'puzzle'
+                    ? 'Quebra-cabeça 5x5 (25 peças, Recorde)'
+                    : '8 cores | Adiciona 3 cores por rodada (Recorde)',
                 cor: Colors.redAccent,
                 onTap: () {
                   Navigator.pop(context);
                   if (jogo == 'memory') {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => const MemoryGamePage(difficulty: 'difícil')),
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            const MemoryGamePage(difficulty: 'difícil'),
+                      ),
                     ).then((_) => _loadProfile());
                   } else if (jogo == 'word') {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => const WordGamePage(difficulty: 'difícil')),
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            const WordGamePage(difficulty: 'difícil'),
+                      ),
                     ).then((_) => _loadProfile());
                   } else if (jogo == 'puzzle') {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => const PuzzleGamePage(difficulty: 'difícil')),
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            const PuzzleGamePage(difficulty: 'difícil'),
+                      ),
                     ).then((_) => _loadProfile());
                   } else {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => const GeniusGamePage(difficulty: 'difícil')),
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            const GeniusGamePage(difficulty: 'difícil'),
+                      ),
                     ).then((_) => _loadProfile());
                   }
                 },
@@ -1355,10 +1856,7 @@ class _HomePageState extends State<HomePage> {
             Container(
               width: 16,
               height: 16,
-              decoration: BoxDecoration(
-                color: cor,
-                shape: BoxShape.circle,
-              ),
+              decoration: BoxDecoration(color: cor, shape: BoxShape.circle),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -1384,7 +1882,10 @@ class _HomePageState extends State<HomePage> {
                 ],
               ),
             ),
-            Icon(Icons.chevron_right, color: isDark ? Colors.white60 : Colors.black54),
+            Icon(
+              Icons.chevron_right,
+              color: isDark ? Colors.white60 : Colors.black54,
+            ),
           ],
         ),
       ),
@@ -1401,7 +1902,8 @@ class _HomePageState extends State<HomePage> {
         final rosaBotao = AppColors.rosaBotao;
         final fundoTela = AppColors.fundoTela;
         final now = DateTime.now();
-        final todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+        final todayStr =
+            "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
         final playedToday = _lastPlayDate == todayStr;
 
         // Lista de telas/widgets das abas
@@ -1429,7 +1931,9 @@ class _HomePageState extends State<HomePage> {
                   '⚠️ Os recordes são salvos apenas na dificuldade Difícil',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: isDark ? Colors.amber.shade200 : Colors.amber.shade800,
+                    color: isDark
+                        ? Colors.amber.shade200
+                        : Colors.amber.shade800,
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
                   ),
@@ -1447,7 +1951,9 @@ class _HomePageState extends State<HomePage> {
                         icone: Icons.psychology_outlined,
                         corFundoIcone: rosaBotao,
                         corTextoBorda: azulBorda,
-                        recordeText: _bestScoreMemory != null ? '$_bestScoreMemory jogadas' : '--',
+                        recordeText: _bestScoreMemory != null
+                            ? '$_bestScoreMemory jogadas'
+                            : '--',
                         onTap: () {
                           _mostrarSelecaoDificuldade(context, 'memory');
                         },
@@ -1457,7 +1963,9 @@ class _HomePageState extends State<HomePage> {
                         icone: Icons.extension_outlined,
                         corFundoIcone: rosaBotao,
                         corTextoBorda: azulBorda,
-                        recordeText: _bestScorePuzzle != null ? '$_bestScorePuzzle mov.' : '--',
+                        recordeText: _bestScorePuzzle != null
+                            ? '$_bestScorePuzzle mov.'
+                            : '--',
                         onTap: () {
                           _mostrarSelecaoDificuldade(context, 'puzzle');
                         },
@@ -1467,7 +1975,9 @@ class _HomePageState extends State<HomePage> {
                         icone: Icons.edit_document,
                         corFundoIcone: rosaBotao,
                         corTextoBorda: azulBorda,
-                        recordeText: _bestScoreWord != null ? '$_bestScoreWord tent.' : '--',
+                        recordeText: _bestScoreWord != null
+                            ? '$_bestScoreWord tent.'
+                            : '--',
                         onTap: () {
                           _mostrarSelecaoDificuldade(context, 'word');
                         },
@@ -1477,7 +1987,9 @@ class _HomePageState extends State<HomePage> {
                         icone: Icons.pie_chart_outline,
                         corFundoIcone: rosaBotao,
                         corTextoBorda: azulBorda,
-                        recordeText: _bestScoreGenius != null ? '$_bestScoreGenius rodadas' : '--',
+                        recordeText: _bestScoreGenius != null
+                            ? '$_bestScoreGenius rodadas'
+                            : '--',
                         onTap: () {
                           _mostrarSelecaoDificuldade(context, 'genius');
                         },
@@ -1515,7 +2027,7 @@ class _HomePageState extends State<HomePage> {
                         ),
                         onPressed: _abrirPainelNotificacoes,
                       ),
-                      if (_pendingRequestsCount > 0)
+                      if (_pendingRequestsCount > 0 || _hasUpdateAvailable)
                         Positioned(
                           right: 12,
                           top: 18,
@@ -1530,7 +2042,9 @@ class _HomePageState extends State<HomePage> {
                               minHeight: 16,
                             ),
                             child: Text(
-                              '$_pendingRequestsCount',
+                              _pendingRequestsCount > 0
+                                  ? '$_pendingRequestsCount'
+                                  : '!',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 9,
@@ -1544,7 +2058,11 @@ class _HomePageState extends State<HomePage> {
                   ),
                   title: Text(
                     _currentIndex == 0 ? 'Sinapse' : 'Ranking',
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 24),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 24,
+                    ),
                   ),
                   centerTitle: true,
                   actions: [
@@ -1559,7 +2077,10 @@ class _HomePageState extends State<HomePage> {
                         borderRadius: BorderRadius.circular(24),
                         child: Container(
                           margin: const EdgeInsets.only(right: 20),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(24),
@@ -1576,7 +2097,9 @@ class _HomePageState extends State<HomePage> {
                             children: [
                               Icon(
                                 Icons.local_fire_department,
-                                color: playedToday ? Colors.deepOrange : Colors.grey,
+                                color: playedToday
+                                    ? Colors.deepOrange
+                                    : Colors.grey,
                                 size: 24,
                               ),
                               const SizedBox(width: 8),
@@ -1586,7 +2109,10 @@ class _HomePageState extends State<HomePage> {
                                       height: 14,
                                       child: CircularProgressIndicator(
                                         strokeWidth: 2,
-                                        valueColor: AlwaysStoppedAnimation<Color>(AppColors.azulPrincipalClaro),
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                              AppColors.azulPrincipalClaro,
+                                            ),
                                       ),
                                     )
                                   : Text(
@@ -1618,10 +2144,7 @@ class _HomePageState extends State<HomePage> {
             unselectedItemColor: isDark ? Colors.white60 : Colors.grey,
             backgroundColor: AppColors.cardFundo,
             items: const [
-              BottomNavigationBarItem(
-                icon: Icon(Icons.home),
-                label: 'Início',
-              ),
+              BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Início'),
               BottomNavigationBarItem(
                 icon: Icon(Icons.leaderboard),
                 label: 'Ranking',
@@ -1652,7 +2175,9 @@ class _HomePageState extends State<HomePage> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: isDark ? Colors.black.withAlpha((255 * 0.3).round()) : Colors.grey.withAlpha((255 * 0.15).round()),
+            color: isDark
+                ? Colors.black.withAlpha((255 * 0.3).round())
+                : Colors.grey.withAlpha((255 * 0.15).round()),
             blurRadius: 10,
             spreadRadius: 1,
             offset: const Offset(0, 4),
@@ -1676,7 +2201,9 @@ class _HomePageState extends State<HomePage> {
                     color: corFundoIcone.withAlpha((255 * 0.15).round()),
                     shape: BoxShape.circle,
                   ),
-                  child: Center(child: Icon(icone, color: corFundoIcone, size: 36)),
+                  child: Center(
+                    child: Icon(icone, color: corFundoIcone, size: 36),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Text(
@@ -1692,12 +2219,18 @@ class _HomePageState extends State<HomePage> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.emoji_events, color: Colors.amber, size: 16),
+                    const Icon(
+                      Icons.emoji_events,
+                      color: Colors.amber,
+                      size: 16,
+                    ),
                     const SizedBox(width: 4),
                     Text(
-                      'Recorde: $recordeText',
+                      recordeText,
                       style: TextStyle(
-                        color: isDark ? Colors.amber.shade200 : Colors.amber.shade800,
+                        color: isDark
+                            ? Colors.amber.shade200
+                            : Colors.amber.shade800,
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
                       ),

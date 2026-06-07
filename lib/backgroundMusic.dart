@@ -1,15 +1,16 @@
 import 'package:audioplayers/audioplayers.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 
-class BackgroundMusic {
+class BackgroundMusic with WidgetsBindingObserver {
   static final BackgroundMusic _instance = BackgroundMusic._internal();
   factory BackgroundMusic() => _instance;
   BackgroundMusic._internal();
 
   final AudioPlayer _player = AudioPlayer();
   double _volume = 0.5; // Volume inicial: 50%
-  bool _isMuted = false;
+  bool _isMuted = true; // Começa mutada por padrão
   bool _isPlaying = false;
+  bool _wasPlayingBeforePause = false; // Controla pausa ao bloquear/minimizar
 
   double get volume => _volume;
   bool get isMuted => _isMuted;
@@ -17,6 +18,22 @@ class BackgroundMusic {
 
   Future<void> init() async {
     _player.setReleaseMode(ReleaseMode.loop);
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      if (_isPlaying && _player.state == PlayerState.playing) {
+        _wasPlayingBeforePause = true;
+        _player.pause();
+      }
+    } else if (state == AppLifecycleState.resumed) {
+      if (_wasPlayingBeforePause) {
+        _wasPlayingBeforePause = false;
+        _player.resume();
+      }
+    }
   }
 
   Future<void> play() async {

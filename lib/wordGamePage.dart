@@ -484,14 +484,21 @@ class _WordGamePageState extends State<WordGamePage> {
     ];
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 20.0, left: 8.0, right: 8.0),
+      padding: const EdgeInsets.only(bottom: 20.0, left: 4.0, right: 4.0),
       child: Column(
-        children: keys.map((row) {
-          return Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: row.map((letter) {
-              return Padding(
-                padding: const EdgeInsets.all(3.0),
+        children: keys.asMap().entries.map((entry) {
+          int rowIndex = entry.key;
+          List<String> row = entry.value;
+
+          List<Widget> rowWidgets = row.map<Widget>((letter) {
+            int flex = 2;
+            if (letter == 'ENTER' || letter == 'DEL') {
+              flex = 3;
+            }
+            return Expanded(
+              flex: flex,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2.0, vertical: 3.0),
                 child: Material(
                   color: _getKeyBgColor(letter),
                   borderRadius: BorderRadius.circular(4),
@@ -499,21 +506,31 @@ class _WordGamePageState extends State<WordGamePage> {
                     onTap: () => _onKeyPress(letter),
                     child: Container(
                       height: 50,
-                      width: letter == 'ENTER' || letter == 'DEL' ? 60 : 32,
                       alignment: Alignment.center,
                       child: Text(
                         letter,
                         style: TextStyle(
                           color: _getKeyTextColor(letter),
                           fontWeight: FontWeight.bold,
-                          fontSize: 13,
+                          fontSize: letter == 'ENTER' || letter == 'DEL' ? 11 : 13,
                         ),
                       ),
                     ),
                   ),
                 ),
-              );
-            }).toList(),
+              ),
+            );
+          }).toList();
+
+          // Adiciona os espaçadores na segunda linha para indentação QWERTY perfeita
+          if (rowIndex == 1) {
+            rowWidgets.insert(0, const Expanded(flex: 1, child: SizedBox()));
+            rowWidgets.add(const Expanded(flex: 1, child: SizedBox()));
+          }
+
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: rowWidgets,
           );
         }).toList(),
       ),

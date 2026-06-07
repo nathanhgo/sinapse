@@ -79,3 +79,9 @@ flutter pub get
 # Rodar o aplicativo localmente
 flutter run
 ```
+
+## Criar Aplicativo
+```bash
+docker run --rm -v "$PWD":/app -w /app ghcr.io/cirruslabs/flutter:stable bash -c "flutter clean && flutter pub get && flutter build apk --release"
+```
+
