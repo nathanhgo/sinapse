@@ -77,7 +77,9 @@ class _GeniusGamePageState extends State<GeniusGamePage> {
         _isGuest = false;
       });
     } catch (e) {
-      debugPrint('Aviso: Coluna best_score_genius pode não existir ainda no banco. Buscando perfil simplificado: $e');
+      debugPrint(
+        'Aviso: Coluna best_score_genius pode não existir ainda no banco. Buscando perfil simplificado: $e',
+      );
       try {
         final data = await Supabase.instance.client
             .from('profiles')
@@ -268,9 +270,11 @@ class _GeniusGamePageState extends State<GeniusGamePage> {
       final user = Supabase.instance.client.auth.currentUser;
       if (user != null) {
         final now = DateTime.now();
-        final todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+        final todayStr =
+            "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
         final yesterday = now.subtract(const Duration(days: 1));
-        final yesterdayStr = "${yesterday.year}-${yesterday.month.toString().padLeft(2, '0')}-${yesterday.day.toString().padLeft(2, '0')}";
+        final yesterdayStr =
+            "${yesterday.year}-${yesterday.month.toString().padLeft(2, '0')}-${yesterday.day.toString().padLeft(2, '0')}";
 
         int? newStreak;
         if (_lastPlayDate == null) {
@@ -304,10 +308,12 @@ class _GeniusGamePageState extends State<GeniusGamePage> {
               .eq('id', user.id)
               .then((_) => null)
               .catchError((e) {
-                debugPrint('Erro ao salvar recorde/ofensiva do Genius no banco: $e');
+                debugPrint(
+                  'Erro ao salvar recorde/ofensiva do Genius no banco: $e',
+                );
               });
         }
-        
+
         // Registra histórico de jogada
         Supabase.instance.client
             .from('play_history')
@@ -329,7 +335,9 @@ class _GeniusGamePageState extends State<GeniusGamePage> {
         final isDark = isDarkModeNotifier.value;
         return AlertDialog(
           backgroundColor: isDark ? const Color(0xFF1B2A47) : Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           title: Center(
             child: Text(
               'Fim de Jogo!',
@@ -371,12 +379,20 @@ class _GeniusGamePageState extends State<GeniusGamePage> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.emoji_events, color: Colors.amber, size: 18),
+                    const Icon(
+                      Icons.emoji_events,
+                      color: Colors.amber,
+                      size: 18,
+                    ),
                     const SizedBox(width: 4),
                     Text(
-                      recordeBatido ? 'Novo Recorde!' : 'Recorde: $_recorde rodadas',
+                      recordeBatido
+                          ? 'Novo Recorde!'
+                          : 'Recorde: $_recorde rodadas',
                       style: TextStyle(
-                        color: recordeBatido ? AppColors.rosaBotao : Colors.amber.shade800,
+                        color: recordeBatido
+                            ? AppColors.rosaBotao
+                            : Colors.amber.shade800,
                         fontWeight: FontWeight.bold,
                         fontSize: 14,
                       ),
@@ -398,10 +414,19 @@ class _GeniusGamePageState extends State<GeniusGamePage> {
           actions: [
             OutlinedButton(
               style: OutlinedButton.styleFrom(
-                foregroundColor: isDark ? Colors.white : AppColors.azulPrincipal,
-                side: BorderSide(color: isDark ? Colors.white30 : AppColors.azulPrincipal),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                foregroundColor: isDark
+                    ? Colors.white
+                    : AppColors.azulPrincipal,
+                side: BorderSide(
+                  color: isDark ? Colors.white30 : AppColors.azulPrincipal,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
               ),
               onPressed: () {
                 Navigator.pop(context); // fecha dialog
@@ -413,8 +438,13 @@ class _GeniusGamePageState extends State<GeniusGamePage> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.rosaBotao,
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
               ),
               onPressed: () {
                 Navigator.pop(context); // fecha dialog
@@ -436,9 +466,6 @@ class _GeniusGamePageState extends State<GeniusGamePage> {
   Widget build(BuildContext context) {
     final isDark = isDarkModeNotifier.value;
     final azulPrincipal = AppColors.azulPrincipal;
-    final now = DateTime.now();
-    final todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
-    final playedToday = _lastPlayDate == todayStr;
 
     return Scaffold(
       backgroundColor: azulPrincipal,
@@ -451,58 +478,29 @@ class _GeniusGamePageState extends State<GeniusGamePage> {
         ),
         title: Text(
           'Genius (${widget.difficulty.toUpperCase()})',
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 18,
+          ),
         ),
-        centerTitle: true,
-        actions: [
-          if (!_isCasual)
-            GestureDetector(
-              onTap: () {
-                showDialog(
-                  context: context,
-                  builder: (context) => const StreakCalendarDialog(),
-                );
-              },
-              child: Container(
-                margin: const EdgeInsets.only(right: 16),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.white.withAlpha((255 * 0.15).round()),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.local_fire_department,
-                      color: playedToday ? Colors.deepOrange : Colors.grey.shade400,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      _streak.toString(),
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-        ],
+        actions: const [],
       ),
       body: Stack(
         children: [
           // Background - Estrela Gigante Discreta
           Positioned.fill(
-            child: CustomPaint(
-              painter: StarPainter(isDark: isDark),
-            ),
+            child: CustomPaint(painter: StarPainter(isDark: isDark)),
           ),
 
           // Área do Jogo
           Positioned.fill(
             child: SafeArea(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24.0,
+                  vertical: 16.0,
+                ),
                 child: Column(
                   children: [
                     const Spacer(),
@@ -512,7 +510,8 @@ class _GeniusGamePageState extends State<GeniusGamePage> {
                       Center(
                         child: AnimatedSwitcher(
                           duration: const Duration(milliseconds: 300),
-                          transitionBuilder: (child, animation) => ScaleTransition(scale: animation, child: child),
+                          transitionBuilder: (child, animation) =>
+                              ScaleTransition(scale: animation, child: child),
                           child: Text(
                             _countdownValue == 0 ? 'JÁ!' : '$_countdownValue',
                             key: ValueKey<int>(_countdownValue),
@@ -537,7 +536,10 @@ class _GeniusGamePageState extends State<GeniusGamePage> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 8,
+                            ),
                             decoration: BoxDecoration(
                               color: Colors.white12,
                               borderRadius: BorderRadius.circular(12),
@@ -553,14 +555,21 @@ class _GeniusGamePageState extends State<GeniusGamePage> {
                           ),
                           if (widget.difficulty == 'difícil')
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
                               decoration: BoxDecoration(
                                 color: Colors.white12,
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Row(
                                 children: [
-                                  const Icon(Icons.emoji_events, color: Colors.amber, size: 18),
+                                  const Icon(
+                                    Icons.emoji_events,
+                                    color: Colors.amber,
+                                    size: 18,
+                                  ),
                                   const SizedBox(width: 4),
                                   Text(
                                     'Recorde: ${_recorde ?? 0}',
@@ -582,16 +591,24 @@ class _GeniusGamePageState extends State<GeniusGamePage> {
                         aspectRatio: widget.difficulty == 'fácil'
                             ? 1.0
                             : widget.difficulty == 'médio'
-                                ? 0.75
-                                : 0.6,
+                            ? 0.75
+                            : 0.6,
                         child: Column(
                           children: [
                             // Linha 0 (Sempre visível)
                             Expanded(
                               child: Row(
                                 children: [
-                                  _buildPadItem(0, Colors.green.shade800, Colors.greenAccent.shade400),
-                                  _buildPadItem(1, Colors.red.shade800, Colors.redAccent.shade400),
+                                  _buildPadItem(
+                                    0,
+                                    Colors.green.shade800,
+                                    Colors.greenAccent.shade400,
+                                  ),
+                                  _buildPadItem(
+                                    1,
+                                    Colors.red.shade800,
+                                    Colors.redAccent.shade400,
+                                  ),
                                 ],
                               ),
                             ),
@@ -599,18 +616,35 @@ class _GeniusGamePageState extends State<GeniusGamePage> {
                             Expanded(
                               child: Row(
                                 children: [
-                                  _buildPadItem(2, Colors.amber.shade800, Colors.yellowAccent.shade400),
-                                  _buildPadItem(3, Colors.cyan.shade700, Colors.cyanAccent.shade200),
+                                  _buildPadItem(
+                                    2,
+                                    Colors.amber.shade800,
+                                    Colors.yellowAccent.shade400,
+                                  ),
+                                  _buildPadItem(
+                                    3,
+                                    Colors.cyan.shade700,
+                                    Colors.cyanAccent.shade200,
+                                  ),
                                 ],
                               ),
                             ),
                             // Linha 2 (Apenas no Médio e Difícil)
-                            if (widget.difficulty == 'médio' || widget.difficulty == 'difícil')
+                            if (widget.difficulty == 'médio' ||
+                                widget.difficulty == 'difícil')
                               Expanded(
                                 child: Row(
                                   children: [
-                                    _buildPadItem(4, Colors.purple.shade700, Colors.purpleAccent.shade200),
-                                    _buildPadItem(5, Colors.orange.shade800, Colors.orangeAccent.shade200),
+                                    _buildPadItem(
+                                      4,
+                                      Colors.purple.shade700,
+                                      Colors.purpleAccent.shade200,
+                                    ),
+                                    _buildPadItem(
+                                      5,
+                                      Colors.orange.shade800,
+                                      Colors.orangeAccent.shade200,
+                                    ),
                                   ],
                                 ),
                               ),
@@ -619,8 +653,16 @@ class _GeniusGamePageState extends State<GeniusGamePage> {
                               Expanded(
                                 child: Row(
                                   children: [
-                                    _buildPadItem(6, Colors.pink.shade700, Colors.pinkAccent.shade200),
-                                    _buildPadItem(7, Colors.indigo.shade800, Colors.indigoAccent.shade200),
+                                    _buildPadItem(
+                                      6,
+                                      Colors.pink.shade700,
+                                      Colors.pinkAccent.shade200,
+                                    ),
+                                    _buildPadItem(
+                                      7,
+                                      Colors.indigo.shade800,
+                                      Colors.indigoAccent.shade200,
+                                    ),
                                   ],
                                 ),
                               ),
@@ -631,7 +673,10 @@ class _GeniusGamePageState extends State<GeniusGamePage> {
 
                       // Status do Jogo
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 12,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.black26,
                           borderRadius: BorderRadius.circular(20),
@@ -639,7 +684,7 @@ class _GeniusGamePageState extends State<GeniusGamePage> {
                         child: Text(
                           _isShowingSequence
                               ? 'Observe a sequência...'
-                              : 'Sua vez! Repita a sequência (${_userSequence.length}/${_sequence.length})',
+                              : 'Sua vez! Repita a sequência',
                           textAlign: TextAlign.center,
                           style: const TextStyle(
                             color: Colors.white,
@@ -702,7 +747,9 @@ class GeniusPad extends StatelessWidget {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
           decoration: BoxDecoration(
-            color: isActive ? activeColor : (isDark ? color.withOpacity(0.4) : color.withOpacity(0.85)),
+            color: isActive
+                ? activeColor
+                : (isDark ? color.withOpacity(0.4) : color.withOpacity(0.85)),
             borderRadius: BorderRadius.circular(24),
             boxShadow: isActive
                 ? [
@@ -710,14 +757,14 @@ class GeniusPad extends StatelessWidget {
                       color: activeColor.withOpacity(0.6),
                       blurRadius: 20,
                       spreadRadius: 4,
-                    )
+                    ),
                   ]
                 : [
                     const BoxShadow(
                       color: Colors.black12,
                       blurRadius: 6,
                       offset: Offset(0, 3),
-                    )
+                    ),
                   ],
           ),
         ),

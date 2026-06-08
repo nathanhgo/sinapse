@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'profilePage.dart';
+import 'avatarWidget.dart';
 import 'memoryGamePage.dart';
 import 'wordGamePage.dart';
 import 'geniusGamePage.dart';
@@ -139,7 +140,7 @@ class _HomePageState extends State<HomePage> {
       if (response.statusCode == 200) {
         final json = jsonDecode(response.body);
         final latestVersion = json['tag_name'] as String;
-        final htmlUrl = json['html_url'] as String;
+        final htmlUrl = 'https://github.com/nathanhgo/sinapse/releases/tag/$latestVersion';
 
         if (_isVersionNewer(currentVersion, latestVersion)) {
           setState(() {
@@ -689,11 +690,22 @@ class _HomePageState extends State<HomePage> {
                                   onPressed: () async {
                                     if (_latestVersionUrl != null) {
                                       final uri = Uri.parse(_latestVersionUrl!);
-                                      if (await canLaunchUrl(uri)) {
+                                      try {
                                         await launchUrl(
                                           uri,
                                           mode: LaunchMode.externalApplication,
                                         );
+                                      } catch (e) {
+                                        debugPrint('Erro ao abrir URL de atualização: $e');
+                                        // Fallback se falhar
+                                        try {
+                                          await launchUrl(
+                                            uri,
+                                            mode: LaunchMode.platformDefault,
+                                          );
+                                        } catch (err) {
+                                          debugPrint('Falha total ao abrir URL: $err');
+                                        }
                                       }
                                     }
                                   },
@@ -727,18 +739,16 @@ class _HomePageState extends State<HomePage> {
                     listChildren.addAll(
                       requests.map((req) {
                         final avatarKey = req['avatar'] as String? ?? 'psychology';
-                        final avatarIcon = ProfilePage.avatarIcons[avatarKey] ?? Icons.psychology;
 
                         return ListTile(
                           contentPadding: EdgeInsets.zero,
-                          leading: CircleAvatar(
+                          leading: AvatarWidget(
+                            avatarKey: avatarKey,
+                            size: 40,
+                            color: isDark ? Colors.white : AppColors.azulPrincipal,
                             backgroundColor: isDark
                                 ? const Color(0xFF1B2A47)
                                 : Colors.blue.shade100,
-                            child: Icon(
-                              avatarIcon,
-                              color: isDark ? Colors.white : AppColors.azulPrincipal,
-                            ),
                           ),
                           title: Text(
                             req['name'] ?? '',
@@ -926,21 +936,17 @@ class _HomePageState extends State<HomePage> {
                             final profile = results[index];
                             final avatarKey =
                                 profile['avatar'] as String? ?? 'psychology';
-                            final avatarIcon =
-                                ProfilePage.avatarIcons[avatarKey] ??
-                                Icons.psychology;
 
                             return ListTile(
-                              leading: CircleAvatar(
+                              leading: AvatarWidget(
+                                avatarKey: avatarKey,
+                                size: 40,
+                                color: isDark
+                                    ? Colors.white
+                                    : AppColors.azulPrincipal,
                                 backgroundColor: isDark
                                     ? const Color(0xFF1B2A47)
                                     : Colors.blue.shade100,
-                                child: Icon(
-                                  avatarIcon,
-                                  color: isDark
-                                      ? Colors.white
-                                      : AppColors.azulPrincipal,
-                                ),
                               ),
                               title: Text(
                                 profile['name'] ?? '',
@@ -1013,7 +1019,6 @@ class _HomePageState extends State<HomePage> {
     final name = profileData['name'] ?? 'Usuário';
     final username = profileData['username'] ?? '';
     final avatarKey = profileData['avatar'] as String? ?? 'psychology';
-    final avatarIcon = ProfilePage.avatarIcons[avatarKey] ?? Icons.psychology;
     final streak = profileData['streak'] as int? ?? 0;
     final memoryScore = profileData['best_score_memory'] as int?;
     final wordScore = profileData.containsKey('best_score_word')
@@ -1113,18 +1118,15 @@ class _HomePageState extends State<HomePage> {
                   content: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      CircleAvatar(
-                        radius: 36,
+                       AvatarWidget(
+                        avatarKey: avatarKey,
+                        size: 72,
+                        color: isDark
+                            ? Colors.white
+                            : AppColors.azulPrincipal,
                         backgroundColor: isDark
                             ? const Color(0xFF1B2A47)
                             : Colors.blue.shade100,
-                        child: Icon(
-                          avatarIcon,
-                          size: 40,
-                          color: isDark
-                              ? Colors.white
-                              : AppColors.azulPrincipal,
-                        ),
                       ),
                       const SizedBox(height: 12),
                       Text(
@@ -1589,7 +1591,6 @@ class _HomePageState extends State<HomePage> {
     }
 
     final avatarKey = profile['avatar'] as String? ?? 'psychology';
-    final avatarIcon = ProfilePage.avatarIcons[avatarKey] ?? Icons.psychology;
 
     return Card(
       color: isSelf
@@ -1611,14 +1612,13 @@ class _HomePageState extends State<HomePage> {
           children: [
             rankWidget,
             const SizedBox(width: 8),
-            CircleAvatar(
+            AvatarWidget(
+              avatarKey: avatarKey,
+              size: 40,
+              color: isDark ? Colors.white : AppColors.azulPrincipal,
               backgroundColor: isDark
                   ? const Color(0xFF1B2A47)
                   : Colors.blue.shade100,
-              child: Icon(
-                avatarIcon,
-                color: isDark ? Colors.white : AppColors.azulPrincipal,
-              ),
             ),
           ],
         ),

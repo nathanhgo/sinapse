@@ -18,6 +18,26 @@ class BackgroundMusic with WidgetsBindingObserver {
 
   Future<void> init() async {
     _player.setReleaseMode(ReleaseMode.loop);
+
+    // Configura o contexto de áudio global para permitir a mixagem paralela sem interrupções
+    try {
+      await AudioPlayer.global.setAudioContext(AudioContext(
+        android: const AudioContextAndroid(
+          contentType: AndroidContentType.music,
+          usageType: AndroidUsageType.game,
+          audioFocus: AndroidAudioFocus.none, // Não pega foco exclusivo
+        ),
+        iOS: AudioContextIOS(
+          category: AVAudioSessionCategory.ambient,
+          options: {
+            AVAudioSessionOptions.mixWithOthers,
+          },
+        ),
+      ));
+    } catch (e) {
+      debugPrint('Erro ao configurar contexto global de áudio: $e');
+    }
+
     WidgetsBinding.instance.addObserver(this);
   }
 

@@ -472,22 +472,7 @@ class _PuzzleGamePageState extends State<PuzzleGamePage> {
           'Quebra-Cabeça (${widget.difficulty.toUpperCase()})',
           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
         ),
-        centerTitle: true,
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16.0),
-            child: Row(
-              children: [
-                const Icon(Icons.local_fire_department, color: Colors.orange, size: 24),
-                const SizedBox(width: 4),
-                Text(
-                  '$_streak',
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-              ],
-            ),
-          ),
-        ],
+        actions: const [],
       ),
       body: Stack(
         children: [
@@ -758,28 +743,30 @@ class _PuzzleGamePageState extends State<PuzzleGamePage> {
                                         ),
                                       )
                                     : SingleChildScrollView(
+                                        scrollDirection: Axis.horizontal,
                                         child: Padding(
-                                          padding: const EdgeInsets.only(bottom: 24.0),
-                                          child: Wrap(
-                                            spacing: 12,
-                                            runSpacing: 12,
+                                          padding: const EdgeInsets.symmetric(vertical: 8.0),
+                                          child: Row(
                                             children: _poolPieces.map((pieceIndex) {
                                               final tile = _buildPuzzleTile(pieceIndex, size: tileSize * 0.95);
                                               
-                                              return Draggable<DragPieceData>(
-                                                data: DragPieceData(pieceIndex: pieceIndex, sourceGridIndex: null),
-                                                feedback: Material(
-                                                  color: Colors.transparent,
-                                                  child: Transform.scale(
-                                                    scale: 1.15,
+                                              return Padding(
+                                                padding: const EdgeInsets.only(right: 12.0),
+                                                child: Draggable<DragPieceData>(
+                                                  data: DragPieceData(pieceIndex: pieceIndex, sourceGridIndex: null),
+                                                  feedback: Material(
+                                                    color: Colors.transparent,
+                                                    child: Transform.scale(
+                                                      scale: 1.15,
+                                                      child: tile,
+                                                    ),
+                                                  ),
+                                                  childWhenDragging: Opacity(
+                                                    opacity: 0.25,
                                                     child: tile,
                                                   ),
-                                                ),
-                                                childWhenDragging: Opacity(
-                                                  opacity: 0.25,
                                                   child: tile,
                                                 ),
-                                                child: tile,
                                               );
                                             }).toList(),
                                           ),

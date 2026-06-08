@@ -3,10 +3,14 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'homePage.dart';
 import 'backgroundMusic.dart';
+import 'notificationService.dart';
 import 'theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Inicializa notificações locais
+  await NotificationService().init();
 
   // Inicializa a música de fundo
   final bgMusic = BackgroundMusic();

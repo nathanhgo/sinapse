@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:image_picker/image_picker.dart';
 import 'main.dart';
 import 'backgroundMusic.dart';
 import 'theme.dart';
+import 'avatarWidget.dart';
 
 void main() {
   runApp(const SinapseApp());
@@ -190,13 +192,161 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
-  // Abre a paleta de seleção de Avatares usando emotes/ícones do Flutter
+  // Abre a paleta de seleção de Avatares usando emotes/ícones do Flutter ou Upload de imagem
   Future<void> _escolherAvatar() async {
     if (_isGuest) {
       _mostrarMensagem('Você precisa estar logado para alterar o avatar.');
       return;
     }
 
+    final isDark = isDarkModeNotifier.value;
+    final dialogBg = isDark ? const Color(0xFF1B2A47) : Colors.white;
+    final titleColor = isDark ? Colors.white : AppColors.azulPrincipalClaro;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: dialogBg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
+        ),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16.0),
+                child: Text(
+                  'Foto de Perfil',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: titleColor,
+                  ),
+                ),
+              ),
+              ListTile(
+                leading: Icon(Icons.photo_library_outlined, color: titleColor),
+                title: Text(
+                  'Fazer Upload da Galeria',
+                  style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _uploadFotoPerfil();
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.emoji_emotions_outlined, color: titleColor),
+                title: Text(
+                  'Escolher Ícone Padrão',
+                  style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _abrirGridIcones();
+                },
+              ),
+              if (_avatarKey.startsWith('http://') || _avatarKey.startsWith('https://'))
+                ListTile(
+                  leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                  title: const Text(
+                    'Remover Foto de Perfil',
+                    style: TextStyle(color: Colors.redAccent),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _removerFotoPerfil();
+                  },
+                ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _uploadFotoPerfil() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 300,
+      maxHeight: 300,
+      imageQuality: 85,
+    );
+
+    if (pickedFile == null) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) return;
+
+      final fileBytes = await pickedFile.readAsBytes();
+      final fileExtension = pickedFile.name.split('.').last;
+      final path = '${user.id}/profile_${DateTime.now().millisecondsSinceEpoch}.$fileExtension';
+
+      // Envia a imagem para o bucket 'avatars' do Supabase
+      await Supabase.instance.client.storage.from('avatars').uploadBinary(
+        path,
+        fileBytes,
+        fileOptions: FileOptions(
+          contentType: 'image/$fileExtension',
+          upsert: true,
+        ),
+      );
+
+      // Obtém a URL pública do avatar
+      final publicUrl = Supabase.instance.client.storage.from('avatars').getPublicUrl(path);
+
+      // Salva no perfil do usuário
+      await Supabase.instance.client
+          .from('profiles')
+          .update({'avatar': publicUrl})
+          .eq('id', user.id);
+
+      setState(() {
+        _avatarKey = publicUrl;
+      });
+
+      _mostrarMensagem('Foto de perfil atualizada com sucesso!', erro: false);
+    } catch (e) {
+      debugPrint('Erro ao fazer upload da foto: $e');
+      _mostrarMensagem('Erro ao enviar imagem. O bucket "avatars" precisa existir e ser público.');
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _removerFotoPerfil() async {
+    setState(() => _isLoading = true);
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user != null) {
+        await Supabase.instance.client
+            .from('profiles')
+            .update({'avatar': 'psychology'})
+            .eq('id', user.id);
+
+        setState(() {
+          _avatarKey = 'psychology';
+        });
+
+        _mostrarMensagem('Foto de perfil removida!', erro: false);
+      }
+    } catch (e) {
+      _mostrarMensagem('Erro ao remover foto: $e');
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _abrirGridIcones() async {
     final isDark = isDarkModeNotifier.value;
     final azulPrincipal = AppColors.azulPrincipal;
     final dialogBg = isDark ? const Color(0xFF1B2A47) : Colors.white;
@@ -210,7 +360,7 @@ class _ProfilePageState extends State<ProfilePage> {
         return AlertDialog(
           backgroundColor: dialogBg,
           title: Text(
-            'Escolha seu Avatar',
+            'Escolha seu Ícone',
             style: TextStyle(fontWeight: FontWeight.bold, color: titleColor),
             textAlign: TextAlign.center,
           ),
@@ -593,25 +743,18 @@ class _ProfilePageState extends State<ProfilePage> {
                 onTap: _escolherAvatar,
                 child: Stack(
                   children: [
-                    Container(
-                      width: 100,
-                      height: 100,
-                      decoration: const BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black26,
-                            blurRadius: 8,
-                            offset: Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Icon(
-                        ProfilePage.avatarIcons[_avatarKey] ?? Icons.psychology,
-                        size: 60,
-                        color: azulPrincipal,
-                      ),
+                    AvatarWidget(
+                      avatarKey: _avatarKey,
+                      size: 100,
+                      color: azulPrincipal,
+                      backgroundColor: Colors.white,
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Colors.black26,
+                          blurRadius: 8,
+                          offset: Offset(0, 4),
+                        ),
+                      ],
                     ),
                     Positioned(
                       bottom: 0,

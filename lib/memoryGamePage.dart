@@ -424,11 +424,6 @@ class _MemoryGamePageState extends State<MemoryGamePage> {
         : widget.difficulty == 'médio'
             ? 34
             : 28;
-
-    final now = DateTime.now();
-    final todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
-    final playedToday = _lastPlayDate == todayStr;
-
     return Scaffold(
       backgroundColor: azulPrincipal,
       appBar: AppBar(
@@ -442,41 +437,7 @@ class _MemoryGamePageState extends State<MemoryGamePage> {
           'Jogo da Memória (${widget.difficulty.toUpperCase()})',
           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
         ),
-        centerTitle: true,
-        actions: [
-          if (!_isCasual)
-            GestureDetector(
-              onTap: () {
-                showDialog(
-                  context: context,
-                  builder: (context) => const StreakCalendarDialog(),
-                );
-              },
-              child: Container(
-                margin: const EdgeInsets.only(right: 16),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.white.withAlpha((255 * 0.15).round()),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.local_fire_department,
-                      color: playedToday ? Colors.deepOrange : Colors.grey.shade400,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      _streak.toString(),
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-        ],
+        actions: const [],
       ),
       body: Stack(
         children: [
