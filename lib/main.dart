@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'homePage.dart';
@@ -172,9 +174,26 @@ class _LoginPageState extends State<LoginPage> {
   bool _senhaVisivel = false;
   bool _isCadastro = false; // Alterna entre login e cadastro
   bool _isLoading = false; // Indicador de carregamento
+  StreamSubscription<AuthState>? _authSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      final session = data.session;
+      if (session != null && mounted) {
+        // Redireciona imediatamente ao detectar login (Ex: Google Redirect)
+        _mostrarMensagem('Bem-vindo ao Sinapse!', erro: false);
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const HomePage()),
+        );
+      }
+    });
+  }
 
   @override
   void dispose() {
+    _authSubscription?.cancel();
     _emailController.dispose();
     _senhaController.dispose();
     _nomeController.dispose();
@@ -227,6 +246,23 @@ class _LoginPageState extends State<LoginPage> {
       if (mounted) {
         setState(() => _isLoading = false);
       }
+    }
+  }
+
+  // Método para autenticar usuário com o Google
+  Future<void> _fazerLoginGoogle() async {
+    setState(() => _isLoading = true);
+    try {
+      await Supabase.instance.client.auth.signInWithOAuth(
+        OAuthProvider.google,
+        redirectTo: kIsWeb ? null : 'sinapse://login-callback',
+      );
+    } on AuthException catch (e) {
+      _mostrarMensagem(e.message);
+      setState(() => _isLoading = false);
+    } catch (e) {
+      _mostrarMensagem('Ocorreu um erro ao entrar com o Google: $e');
+      setState(() => _isLoading = false);
     }
   }
 
@@ -515,6 +551,46 @@ class _LoginPageState extends State<LoginPage> {
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // Botão do Google
+                    ElevatedButton(
+                      onPressed: _isLoading ? null : _fazerLoginGoogle,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: Colors.black87,
+                        minimumSize: const Size(double.infinity, 52),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                        elevation: 3,
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Image.network(
+                            'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/1024px-Google_%22G%22_logo.svg.png',
+                            height: 22,
+                            width: 22,
+                            errorBuilder: (context, error, stackTrace) => const Icon(
+                              Icons.g_mobiledata,
+                              color: Colors.blue,
+                              size: 26,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          const Text(
+                            'Continuar com o Google',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.black87,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
 
                     const SizedBox(height: 16),

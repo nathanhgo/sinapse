@@ -28,7 +28,7 @@ class BackgroundMusic with WidgetsBindingObserver {
           audioFocus: AndroidAudioFocus.none, // Não pega foco exclusivo
         ),
         iOS: AudioContextIOS(
-          category: AVAudioSessionCategory.ambient,
+          category: AVAudioSessionCategory.playback,
           options: {
             AVAudioSessionOptions.mixWithOthers,
           },

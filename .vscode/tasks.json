@@ -1,0 +1,35 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Sinapse: Iniciar Servidor Web (Porta 3000)",
+      "type": "shell",
+      "command": "flutter run -d chrome --web-port 3000",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "Sinapse: Limpar Cache e Corrigir Permissões",
+      "type": "shell",
+      "command": "flutter clean && flutter pub get && docker run --rm -v \"${workspaceFolder}\":/app -w /app ghcr.io/cirruslabs/flutter:stable chown -R 1000:1000 .",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "Sinapse: Gerar APK de Produção (Docker)",
+      "type": "shell",
+      "command": "docker run --rm -v \"${workspaceFolder}\":/app -w /app ghcr.io/cirruslabs/flutter:stable bash -c \"flutter build apk --release && chown -R 1000:1000 .\"",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    }
+  ]
+}

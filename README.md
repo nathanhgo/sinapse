@@ -82,6 +82,6 @@ flutter run
 
 ## Criar Aplicativo
 ```bash
-docker run --rm -v "$PWD":/app -w /app ghcr.io/cirruslabs/flutter:stable bash -c "flutter clean && flutter pub get && flutter build apk --release"
+docker run --rm --user 1000:1000 -v "$PWD":/app -w /app ghcr.io/cirruslabs/flutter:stable bash -c "git config --global --add safe.directory /sdks/flutter && flutter build apk --release"
 ```
 

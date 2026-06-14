@@ -30,7 +30,6 @@ create policy "Usuários podem atualizar seu próprio perfil"
   on public.profiles for update
   using (auth.uid() = id);
 
--- 4. Função Trigger para Criação Automática do Perfil após Sign Up
 create or replace function public.handle_new_user()
 returns trigger as $$
 begin
@@ -41,7 +40,7 @@ begin
     coalesce(new.raw_user_meta_data ->> 'username', 'user_' || substring(new.id::text from 1 for 8)),
     0,
     false,
-    'psychology'
+    coalesce(new.raw_user_meta_data ->> 'avatar_url', 'psychology')
   );
   return new;
 end;
@@ -52,6 +51,36 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+
+-- Atualizar automaticamente a foto de perfil do Google caso ela mude e o usuário não tenha alterado manualmente
+create or replace function public.handle_user_update()
+returns trigger as $$
+begin
+  if exists (
+    select 1 from public.profiles
+    where id = new.id
+      and (
+        avatar is null
+        or avatar = 'psychology'
+        or avatar like 'https://lh3.googleusercontent.com%'
+      )
+  ) then
+    if new.raw_user_meta_data ->> 'avatar_url' is not null then
+      update public.profiles
+      set avatar = new.raw_user_meta_data ->> 'avatar_url'
+      where id = new.id
+        and avatar != new.raw_user_meta_data ->> 'avatar_url';
+    end if;
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists on_auth_user_updated on auth.users;
+create trigger on_auth_user_updated
+  after update on auth.users
+  for each row execute procedure public.handle_user_update();
+
 
 -- 5. Função Segura (Security Definer) para Exclusão de Conta pelo Aplicativo
 -- Como o SDK cliente do Supabase não permite deletar o auth.users diretamente,
