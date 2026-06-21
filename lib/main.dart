@@ -117,10 +117,7 @@ class _SplashScreenState extends State<SplashScreen> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF42A5F5),
-              Color(0xFF0D47A1),
-            ],
+            colors: [Color(0xFF42A5F5), Color(0xFF0D47A1)],
           ),
         ),
         child: Column(
@@ -157,7 +154,7 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 }
 
-// Login Page (Atualizada com Cadastro e Supabase Auth)
+// Login Page
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
@@ -179,14 +176,16 @@ class _LoginPageState extends State<LoginPage> {
   @override
   void initState() {
     super.initState();
-    _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+    _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen((
+      data,
+    ) {
       final session = data.session;
       if (session != null && mounted) {
         // Redireciona imediatamente ao detectar login (Ex: Google Redirect)
         _mostrarMensagem('Bem-vindo ao Sinapse!', erro: false);
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const HomePage()),
-        );
+        Navigator.of(
+          context,
+        ).pushReplacement(MaterialPageRoute(builder: (_) => const HomePage()));
       }
     });
   }
@@ -296,13 +295,7 @@ class _LoginPageState extends State<LoginPage> {
       await Supabase.instance.client.auth.signUp(
         email: email,
         password: senha,
-        data: {
-          'name': nome,
-          'username': usuario.replaceAll(
-            '@',
-            '',
-          ),
-        },
+        data: {'name': nome, 'username': usuario.replaceAll('@', '')},
       );
 
       if (mounted) {
@@ -361,17 +354,14 @@ class _LoginPageState extends State<LoginPage> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF42A5F5),
-              Color(0xFF0D47A1),
-            ],
+            colors: [Color(0xFF42A5F5), Color(0xFF0D47A1)],
           ),
         ),
 
         child: SingleChildScrollView(
           child: Column(
             children: [
-              // Cabeçalho branco com logo curva premium
+              // Cabeçalho branco com logo
               Container(
                 width: double.infinity,
                 height: 250,
@@ -417,7 +407,7 @@ class _LoginPageState extends State<LoginPage> {
                   children: [
                     const SizedBox(height: 24),
 
-                    // Campos adicionais exclusivos de CADASTRO
+                    // Campos adicionais exclusivos de cadastro
                     if (_isCadastro) ...[
                       const Text(
                         'Nome Completo',
@@ -574,11 +564,12 @@ class _LoginPageState extends State<LoginPage> {
                             'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/1024px-Google_%22G%22_logo.svg.png',
                             height: 22,
                             width: 22,
-                            errorBuilder: (context, error, stackTrace) => const Icon(
-                              Icons.g_mobiledata,
-                              color: Colors.blue,
-                              size: 26,
-                            ),
+                            errorBuilder: (context, error, stackTrace) =>
+                                const Icon(
+                                  Icons.g_mobiledata,
+                                  color: Colors.blue,
+                                  size: 26,
+                                ),
                           ),
                           const SizedBox(width: 12),
                           const Text(

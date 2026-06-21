@@ -30,6 +30,17 @@
         "reveal": "always",
         "panel": "new"
       }
+    },
+    {
+      "label": "Sinapse: Executar Testes Automatizados",
+      "type": "shell",
+      "command": "flutter test",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
     }
   ]
 }
+
