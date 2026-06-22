@@ -503,10 +503,9 @@ class _GeniusGamePageState extends State<GeniusGamePage> {
                 ),
                 child: Column(
                   children: [
-                    const Spacer(),
-
-                    // Se estiver contando, mostra contagem regressiva
-                    if (_isCountingDown)
+                    // Se estiver contando, mostra contagem regressiva centralizada
+                    if (_isCountingDown) ...[
+                      const Spacer(),
                       Center(
                         child: AnimatedSwitcher(
                           duration: const Duration(milliseconds: 300),
@@ -529,8 +528,9 @@ class _GeniusGamePageState extends State<GeniusGamePage> {
                             ),
                           ),
                         ),
-                      )
-                    else ...[
+                      ),
+                      const Spacer(),
+                    ] else ...[
                       // Informações de rodada e recorde
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -584,15 +584,10 @@ class _GeniusGamePageState extends State<GeniusGamePage> {
                             ),
                         ],
                       ),
-                      const SizedBox(height: 32),
+                      const SizedBox(height: 16),
 
-                      // Grid do Genius
-                      AspectRatio(
-                        aspectRatio: widget.difficulty == 'fácil'
-                            ? 1.0
-                            : widget.difficulty == 'médio'
-                            ? 0.75
-                            : 0.6,
+                      // Grid do Genius adaptável usando Expanded para ocupar o espaço restante
+                      Expanded(
                         child: Column(
                           children: [
                             // Linha 0 (Sempre visível)
@@ -669,7 +664,7 @@ class _GeniusGamePageState extends State<GeniusGamePage> {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 32),
+                      const SizedBox(height: 16),
 
                       // Status do Jogo
                       Container(
@@ -694,10 +689,9 @@ class _GeniusGamePageState extends State<GeniusGamePage> {
                         ),
                       ),
                     ],
-
-                    const Spacer(),
                   ],
                 ),
+
               ),
             ),
           ),
